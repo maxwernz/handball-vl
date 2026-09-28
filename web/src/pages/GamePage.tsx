@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import type { GameDetail, MatchEvent, PlayerLine, Report, TeamDetail, TeamSheet } from '../../../shared/types.ts';
-import { useGame, useTeam } from '../api.ts';
+import { useGame, useLeague, useTeam } from '../api.ts';
 import { CompareBar, ScoreFlowChart } from '../components/charts.tsx';
 import { GameList } from '../components/GameRow.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Empty, ErrorBox, FormBadges, LiveBadge, Loading, Section, Tabs } from '../components/ui.tsx';
 import { formatLongDay, formatTime } from '../lib/format.ts';
 import { matchStats } from '../lib/matchStats.ts';
+import { unitTable, type Unit, type UnitRow } from '../lib/standings.ts';
 import { playerKey } from '../../../shared/players.ts';
 
 type Tab = 'summary' | 'ticker' | 'lineups' | 'stats' | 'compare';
@@ -260,6 +261,7 @@ function MatchStatsView({ report, data }: { report: Report; data: GameDetail }) 
 function Comparison({ homeId, guestId }: { homeId: number; guestId: number }) {
   const home = useTeam(homeId);
   const guest = useTeam(guestId);
+  const { data: league } = useLeague(home.data?.league.id);
   if (home.isLoading || guest.isLoading) return <Loading />;
   if (!home.data || !guest.data) return <ErrorBox error={home.error ?? guest.error} />;
   const a = home.data;
@@ -278,6 +280,21 @@ function Comparison({ homeId, guestId }: { homeId: number; guestId: number }) {
     ) : (
       '–'
     );
+  };
+  // Attack/defense rank in the league; the better of the two is highlighted.
+  const unitRow = (label: string, unit: Unit) => {
+    if (!league) return null;
+    const table = unitTable(league.table, unit);
+    const [x, y] = [a, b].map((t) => table.find((r) => r.teamId === t.team.id));
+    const cell = (r: UnitRow | undefined, other: UnitRow | undefined) =>
+      r?.perGame != null ? (
+        <span className={other?.perGame != null && r.rank < other.rank ? 'text-(--color-win)' : ''}>
+          {r.rank}. <span className="font-normal text-(--color-ink-2)">· {num(r.perGame)}</span>
+        </span>
+      ) : (
+        '–'
+      );
+    return row(label, cell(x, y), cell(y, x));
   };
   const row = (label: string, left: React.ReactNode, right: React.ReactNode) => (
     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2 text-sm">
@@ -301,6 +318,8 @@ function Comparison({ homeId, guestId }: { homeId: number; guestId: number }) {
         </div>
         {row('Platz', a.tableRow ? `${a.tableRow.rank}.` : '–', b.tableRow ? `${b.tableRow.rank}.` : '–')}
         {row('Punkte', a.tableRow ? `${a.tableRow.pointsPlus}:${a.tableRow.pointsMinus}` : '–', b.tableRow ? `${b.tableRow.pointsPlus}:${b.tableRow.pointsMinus}` : '–')}
+        {unitRow('Angriff', 'attack')}
+        {unitRow('Abwehr', 'defense')}
         {row('Form', <FormBadges form={a.stats.form} />, <span className="flex justify-end"><FormBadges form={b.stats.form} /></span>)}
         {row('Heim / Auswärts', record(a.stats.home), record(b.stats.away))}
         {row('Torschütze', scorer(a), scorer(b))}
@@ -313,7 +332,8 @@ function Comparison({ homeId, guestId }: { homeId: number; guestId: number }) {
         <CompareBar label="Spielzeit in Führung" home={rate(a.stats.timeLeading, a.stats.timeTotal)} guest={rate(b.stats.timeLeading, b.stats.timeTotal)} format={pct} />
         <CompareBar label="Knappe Spiele gewonnen" home={a.stats.close.won} guest={b.stats.close.won} />
         <p className="py-2 text-xs text-(--color-ink-3)">
-          Saisonwerte: Heimbilanz von {a.team.name}, Auswärtsbilanz von {b.team.name}. Knapp = höchstens 2 Tore Unterschied.
+          Saisonwerte: Heimbilanz von {a.team.name}, Auswärtsbilanz von {b.team.name}. Angriff/Abwehr: Platz in der Liga
+          nach Toren bzw. Gegentoren pro Spiel. Knapp = höchstens 2 Tore Unterschied.
         </p>
       </div>
     </div>
