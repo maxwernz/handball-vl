@@ -1,0 +1,87 @@
+name: Daten aktualisieren und veröffentlichen
+
+on:
+  schedule:
+    # Zeiten in UTC. h4a bittet um sparsamen Zugriff: an Spieltagen alle 30 Minuten,
+    # sonst zweimal täglich. Live-Spielstände holt die App ohnehin selbst von h4a.
+    - cron: '*/30 11-21 * * 6,0' # Sa/So nachmittags und abends
+    - cron: '15 17-21 * * 1-5' # werktags abends stündlich
+    - cron: '0 5 * * *' # jeden Morgen
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write # Datenstand im Branch "data" sichern
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Der verarbeitete Datenstand (geparste Spielberichte, Logos, …) liegt im Branch "data",
+      # damit nicht jeder Lauf alles neu von h4a laden muss.
+      - name: Datenstand holen
+        id: data
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: data
+          path: data
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Daten von h4a synchronisieren
+        run: node pipeline/run.ts
+        env:
+          BUDGET_MINUTES: 8
+
+      - name: Seite bauen
+        run: |
+          repo="${GITHUB_REPOSITORY#*/}"
+          if [[ "$repo" == *.github.io ]]; then export BASE_PATH=/; else export BASE_PATH="/$repo/"; fi
+          npm run build
+
+      - name: Datenstand sichern
+        run: |
+          cd data
+          if [ ! -d .git ]; then
+            git init -b data
+            git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "Keine Änderungen"; exit 0; fi
+          git commit -q -m "Datenstand $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q origin HEAD:data
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,94 @@
+@import 'tailwindcss';
+
+/* Semantic color tokens; dark values are their own steps, not an inversion. */
+@theme {
+  --color-bg: #f3f5f8;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef1f5;
+  --color-line: #dfe3ea;
+  --color-ink: #0e1726;
+  --color-ink-2: #4b5567;
+  --color-ink-3: #7a8497;
+  --color-brand: #2a78d6;
+  --color-brand-ink: #ffffff;
+  --color-header: #0f1b2d;
+  --color-win: #16804a;
+  --color-draw: #9a7400;
+  --color-loss: #c63b3a;
+  --color-live: #e0322f;
+  --color-home: #2a78d6;
+  --color-guest: #eb6834;
+  --color-promo: #16804a;
+  --color-releg: #c63b3a;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0b1220;
+    --color-surface: #131c2c;
+    --color-surface-2: #1a2436;
+    --color-line: #26324a;
+    --color-ink: #eef2f8;
+    --color-ink-2: #b4bdcc;
+    --color-ink-3: #8390a6;
+    --color-brand: #3987e5;
+    --color-header: #0a111d;
+    --color-win: #3fb27a;
+    --color-draw: #d2a93a;
+    --color-loss: #ea6a68;
+    --color-live: #ff5552;
+    --color-home: #3987e5;
+    --color-guest: #d95926;
+    --color-promo: #3fb27a;
+    --color-releg: #ea6a68;
+    color-scheme: dark;
+  }
+}
+
+html {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  font-family: var(--font-sans);
+  min-height: 100dvh;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+.summary p {
+  margin: 0 0 0.8em;
+  line-height: 1.6;
+}
+.summary em {
+  font-style: normal;
+  font-weight: 600;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.live-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}

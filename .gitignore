@@ -1,0 +1,6 @@
+node_modules
+dist
+data
+web/public/api
+*.tmp
+.DS_Store
