@@ -163,6 +163,11 @@ export interface PlayerStats {
   twoMinutes: number;
   warnings: number;
   disqualifications: number;
+  /** Goals of the player's team in the games the player took part in (for the share of team goals). */
+  teamGoals: number;
+  bestGame: { gameId: number; goals: number; opponent: string } | null;
+  /** Most consecutive games with at least one goal. */
+  longestStreak: number;
 }
 
 export interface PlayerDetail extends PlayerStats {
@@ -185,7 +190,13 @@ export interface TeamStats {
   home: { won: number; drawn: number; lost: number };
   away: { won: number; drawn: number; lost: number };
   form: ('W' | 'D' | 'L')[];
+  /** Current run of equal results, e.g. 3 wins in a row. */
+  streak: { type: 'W' | 'D' | 'L'; length: number } | null;
+  /** Games decided by at most two goals. */
+  close: { won: number; drawn: number; lost: number };
   leadAtHalf: number;
+  /** Led at half time but did not win. */
+  leadLost: number;
   comebacks: number;
   biggestWin: { gameId: number; diff: number; score: string } | null;
   biggestLoss: { gameId: number; diff: number; score: string } | null;
@@ -198,7 +209,33 @@ export interface TeamStats {
   avgSpectators: number | null;
   goalsForByPeriod: number[];
   goalsAgainstByPeriod: number[];
+  /** Game time (seconds, from match reports) spent leading, trailing and in total. */
+  timeLeading: number;
+  timeTrailing: number;
+  timeTotal: number;
+  /** Goals scored / conceded while having more players on court. */
+  powerPlay: { for: number; against: number };
+  /** Goals scored / conceded while having fewer players on court. */
+  shortHanded: { for: number; against: number };
   reports: number;
+}
+
+export interface GameRecord {
+  gameId: number;
+  home: string;
+  guest: string;
+  score: string;
+  value: number;
+}
+
+export interface LeagueSummary {
+  homeWins: number;
+  draws: number;
+  awayWins: number;
+  avgSpectators: number | null;
+  biggestWin: GameRecord | null;
+  mostGoals: GameRecord | null;
+  topPlayerGame: { key: string; name: string; teamId: number; team: string; goals: number; gameId: number; opponent: string } | null;
 }
 
 export interface SiteIndex {
@@ -212,6 +249,8 @@ export interface Meta {
   leagues: LeagueRef[];
   /** Logo file per team id, relative to `api/logos/`; teams without a logo are missing. */
   logos: Record<number, string>;
+  /** All teams of the season, so favorites (stored by name) can be resolved to ids anywhere. */
+  teams: { id: number; name: string; leagueId: number }[];
   /** Whether match reports of this season are still being downloaded. */
   incomplete: boolean;
 }
@@ -239,4 +278,5 @@ export interface StatsResponse {
   teams: TeamStats[];
   reports: number;
   finished: number;
+  summary: LeagueSummary;
 }

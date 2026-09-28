@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMeta, useStats } from '../api.ts';
-import { PlayerTable, TeamTable, type PlayerView, type TeamView } from '../components/StatTables.tsx';
+import { LeagueSummaryView } from '../components/LeagueSummary.tsx';
+import { PLAYER_VIEWS, PlayerTable, TeamTable, TeamViewChips, type PlayerView, type TeamView } from '../components/StatTables.tsx';
 import { Chips, ErrorBox, Loading, Section, StatTile } from '../components/ui.tsx';
 import { leagueLabel, perGame } from '../lib/format.ts';
 
@@ -45,6 +46,7 @@ export function StatsPage() {
             <StatTile label="Spieler erfasst" value={data.players.length} />
             <StatTile label="Top-Torschütze" value={totals.top?.goals ?? '–'} hint={totals.top ? `${totals.top.name} (${totals.top.team})` : undefined} />
           </div>
+          <LeagueSummaryView data={data} />
           <Section title="Spieler">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <input
@@ -56,26 +58,14 @@ export function StatsPage() {
               />
             </div>
             <Chips
-              options={[
-                { id: 'goals', label: 'Torschützen' },
-                { id: 'seven', label: '7-Meter' },
-                { id: 'penalties', label: 'Strafen' },
-              ]}
+              options={PLAYER_VIEWS}
               value={playerView}
               onChange={setPlayerView}
             />
             <PlayerTable players={players} view={playerView} leagues={league === 'all' ? meta?.leagues : undefined} limit={25} />
           </Section>
           <Section title="Mannschaften">
-            <Chips
-              options={[
-                { id: 'attack', label: 'Tore' },
-                { id: 'games', label: 'Bilanz' },
-                { id: 'discipline', label: 'Disziplin' },
-              ]}
-              value={teamView}
-              onChange={setTeamView}
-            />
+            <TeamViewChips value={teamView} onChange={setTeamView} />
             <TeamTable teams={data.teams} view={teamView} leagues={league === 'all' ? meta?.leagues : undefined} />
           </Section>
         </>

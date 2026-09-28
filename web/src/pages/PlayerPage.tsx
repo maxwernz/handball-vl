@@ -5,6 +5,20 @@ import { TeamLogo } from '../components/TeamLogo.tsx';
 import { ErrorBox, Loading, Section, StatTile } from '../components/ui.tsx';
 import { formatDay, perGame, percent } from '../lib/format.ts';
 
+function HalfSplit({ periods }: { periods: number[] }) {
+  const first = periods.slice(0, 3).reduce((a, b) => a + b, 0);
+  const second = periods.slice(3).reduce((a, b) => a + b, 0);
+  const total = first + second;
+  if (!total) return null;
+  return (
+    <p className="mt-2 text-sm text-(--color-ink-2)">
+      1. Halbzeit <strong className="text-(--color-ink)">{first}</strong> ({percent(first, total)}) · 2. Halbzeit{' '}
+      <strong className="text-(--color-ink)">{second}</strong> ({percent(second, total)}) · Schlussphase ab 51'{' '}
+      <strong className="text-(--color-ink)">{periods[5]}</strong>
+    </p>
+  );
+}
+
 export function PlayerPage() {
   const key = useParams().key!;
   const { data: p, isLoading, error } = usePlayer(key);
@@ -29,7 +43,21 @@ export function PlayerPage() {
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile label="Tore" value={p.goals} hint={p.rankInLeague ? `Platz ${p.rankInLeague} der Liga` : undefined} />
         <StatTile label="Tore pro Spiel" value={perGame(p.goals, p.games)} hint={`${p.games} Spiele`} />
+        <StatTile label="Anteil an Teamtoren" value={percent(p.goals, p.teamGoals)} hint={`${p.goals} von ${p.teamGoals} Toren`} />
+        <StatTile label="Feldtore" value={p.goals - p.sevenGoals} hint={`und ${p.sevenGoals} per 7-Meter`} />
         <StatTile label="7-Meter" value={`${p.sevenGoals}/${p.sevenAttempts}`} hint={p.sevenAttempts ? `Quote ${percent(p.sevenGoals, p.sevenAttempts)}` : 'keine Versuche'} />
+        <StatTile
+          label="Bestes Spiel"
+          value={p.bestGame?.goals ?? '–'}
+          hint={
+            p.bestGame ? (
+              <Link to={`/spiel/${p.bestGame.gameId}`} className="hover:underline">
+                Tore gegen {p.bestGame.opponent}
+              </Link>
+            ) : undefined
+          }
+        />
+        <StatTile label="Torserie" value={p.longestStreak} hint="Spiele in Folge mit Tor" />
         <StatTile label="Strafen" value={p.twoMinutes} hint={`Zeitstrafen · ${p.warnings} Gelb · ${p.disqualifications} Rot`} />
       </div>
 
@@ -47,6 +75,7 @@ export function PlayerPage() {
         <div className="card p-4">
           <h3 className="mb-2 font-semibold">Tore nach Spielabschnitt</h3>
           <PeriodBars series={[{ label: 'Tore', values: p.goalsByPeriod, color: 'var(--color-brand)' }]} />
+          <HalfSplit periods={p.goalsByPeriod} />
         </div>
       </div>
 

@@ -27,6 +27,19 @@ export function FormBadges({ form }: { form: ('W' | 'D' | 'L')[] }) {
   );
 }
 
+export function FavoriteStar({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={on}
+      aria-label={on ? 'Aus Favoriten entfernen' : 'Als Favorit markieren'}
+      className={`self-start rounded-full p-2 text-2xl leading-none transition hover:bg-(--color-surface-2) ${on ? 'text-(--color-draw)' : 'text-(--color-ink-3)'}`}
+    >
+      {on ? '★' : '☆'}
+    </button>
+  );
+}
+
 export function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="mb-6">

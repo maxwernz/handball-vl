@@ -2,15 +2,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import type { Game, League } from '../../../shared/types.ts';
 import { useLeague, useStats } from '../api.ts';
+import { RankChart, SERIES_COLORS } from '../components/charts.tsx';
 import { GameList } from '../components/GameRow.tsx';
+import { LeagueSummaryView } from '../components/LeagueSummary.tsx';
 import { StandingsTable } from '../components/StandingsTable.tsx';
-import { PlayerTable, TeamTable, type PlayerView, type TeamView } from '../components/StatTables.tsx';
-import { Chips, Empty, ErrorBox, Loading, Section, Tabs } from '../components/ui.tsx';
+import { PLAYER_VIEWS, PlayerTable, TeamTable, TeamViewChips, type PlayerView, type TeamView } from '../components/StatTables.tsx';
+import { TeamLogo } from '../components/TeamLogo.tsx';
+import { Chips, Empty, ErrorBox, FavoriteStar, Loading, Section, Tabs } from '../components/ui.tsx';
+import { toggleFavoriteLeague, useFavoriteLeagues, useFavorites } from '../lib/favorites.ts';
 import { formatDay, isoDay } from '../lib/format.ts';
-import { currentRound, tableFor, type TableView } from '../lib/standings.ts';
+import { currentRound, rankHistory, tableFor, type TableView } from '../lib/standings.ts';
 import { storage } from '../lib/storage.ts';
 
-type Tab = 'table' | 'schedule' | 'stats';
+type Tab = 'table' | 'schedule' | 'history' | 'stats';
 
 function TableTab({ league }: { league: League }) {
   const [view, setView] = useState<TableView>('all');
@@ -85,6 +89,61 @@ function ScheduleTab({ league }: { league: League }) {
   );
 }
 
+const MAX_SELECTED = SERIES_COLORS.length;
+
+function HistoryTab({ league }: { league: League }) {
+  const favorites = useFavorites();
+  const history = useMemo(() => rankHistory(league), [league]);
+  const [selected, setSelected] = useState<number[]>(() => {
+    const favs = league.teams.filter((t) => favorites.includes(t.name)).map((t) => t.id);
+    return (favs.length ? favs : league.table.slice(0, 3).map((r) => r.teamId)).slice(0, MAX_SELECTED);
+  });
+  if (!history.rounds.length) return <Empty>Der Tabellenverlauf erscheint nach dem ersten Spieltag.</Empty>;
+
+  const toggle = (id: number) =>
+    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : s.length < MAX_SELECTED ? [...s, id] : [...s.slice(1), id]));
+  const order = league.table.length ? league.table.map((r) => r.teamId) : league.teams.map((t) => t.id);
+  const name = new Map(league.teams.map((t) => [t.id, t.name]));
+  const series = order
+    .filter((id) => history.ranks.has(id))
+    .map((id) => ({
+      id,
+      label: name.get(id) ?? '',
+      ranks: history.ranks.get(id)!,
+      color: selected.includes(id) ? SERIES_COLORS[selected.indexOf(id)] : undefined,
+    }));
+
+  return (
+    <>
+      <div className="card mb-4 p-4">
+        <RankChart rounds={history.rounds} teams={league.teams.length} series={series} />
+        <p className="mt-2 text-xs text-(--color-ink-3)">
+          Platz nach jedem Spieltag. Der aktuelle Platz stammt aus der offiziellen Tabelle, frühere Spieltage sind aus den Ergebnissen nachgerechnet (punktgleiche Teams teilen sich den Platz).
+        </p>
+      </div>
+      <div className="mb-2 px-1 text-sm text-(--color-ink-2)">Teams zum Vergleichen antippen (bis zu {MAX_SELECTED}):</div>
+      <div className="flex flex-wrap gap-2">
+        {order.map((id) => {
+          const on = selected.includes(id);
+          return (
+            <button
+              key={id}
+              onClick={() => toggle(id)}
+              aria-pressed={on}
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition ${on ? 'font-semibold' : 'border-(--color-line) bg-(--color-surface) text-(--color-ink-2) hover:text-(--color-ink)'}`}
+              style={on ? { borderColor: SERIES_COLORS[selected.indexOf(id)] } : undefined}
+            >
+              {on && <span className="h-2.5 w-2.5 rounded-full" style={{ background: SERIES_COLORS[selected.indexOf(id)] }} />}
+              <TeamLogo teamId={id} name={name.get(id) ?? ''} size={18} />
+              {name.get(id)}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 function StatsTab({ league }: { league: League }) {
   const { data, isLoading, error } = useStats(league.id);
   const [playerView, setPlayerView] = useState<PlayerView>('goals');
@@ -96,28 +155,17 @@ function StatsTab({ league }: { league: League }) {
       <p className="mb-4 px-1 text-xs text-(--color-ink-3)">
         Aus {data.reports} von {data.finished} Spielberichten ausgewertet.
       </p>
+      <LeagueSummaryView data={data} />
       <Section title="Spieler">
         <Chips
-          options={[
-            { id: 'goals', label: 'Torschützen' },
-            { id: 'seven', label: '7-Meter' },
-            { id: 'penalties', label: 'Strafen' },
-          ]}
+          options={PLAYER_VIEWS}
           value={playerView}
           onChange={setPlayerView}
         />
         <PlayerTable players={data.players} view={playerView} />
       </Section>
       <Section title="Mannschaften">
-        <Chips
-          options={[
-            { id: 'attack', label: 'Tore' },
-            { id: 'games', label: 'Bilanz' },
-            { id: 'discipline', label: 'Disziplin' },
-          ]}
-          value={teamView}
-          onChange={setTeamView}
-        />
+        <TeamViewChips value={teamView} onChange={setTeamView} />
         <TeamTable teams={data.teams} view={teamView} />
       </Section>
     </>
@@ -129,6 +177,7 @@ export function LeaguePage() {
   const [params, setParams] = useSearchParams();
   const tab = (params.get('tab') as Tab) ?? 'table';
   const { data: league, isLoading, error } = useLeague(id);
+  const favoriteLeagues = useFavoriteLeagues();
 
   useEffect(() => storage.set('lastLeague', String(id)), [id]);
 
@@ -136,12 +185,18 @@ export function LeaguePage() {
   if (error || !league) return <ErrorBox error={error} />;
   return (
     <div>
-      <h1 className="mb-0.5 text-xl font-bold">{league.name}</h1>
-      <p className="mb-4 text-sm text-(--color-ink-2)">{league.short}</p>
+      <div className="mb-4 flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="mb-0.5 text-xl font-bold">{league.name}</h1>
+          <p className="text-sm text-(--color-ink-2)">{league.short}</p>
+        </div>
+        <FavoriteStar on={favoriteLeagues.includes(league.short)} onClick={() => toggleFavoriteLeague(league.short)} />
+      </div>
       <Tabs
         tabs={[
           { id: 'table', label: 'Tabelle' },
           { id: 'schedule', label: 'Spielplan' },
+          { id: 'history', label: 'Verlauf' },
           { id: 'stats', label: 'Statistik' },
         ]}
         value={tab}
@@ -149,6 +204,7 @@ export function LeaguePage() {
       />
       {tab === 'table' && <TableTab league={league} />}
       {tab === 'schedule' && <ScheduleTab key={league.id} league={league} />}
+      {tab === 'history' && <HistoryTab key={league.id} league={league} />}
       {tab === 'stats' && <StatsTab league={league} />}
     </div>
   );

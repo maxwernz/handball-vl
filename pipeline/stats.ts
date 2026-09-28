@@ -43,7 +43,10 @@ function emptyTeam(teamId: number, team: string, leagueId: number): TeamStats {
     home: { won: 0, drawn: 0, lost: 0 },
     away: { won: 0, drawn: 0, lost: 0 },
     form: [],
+    streak: null,
+    close: { won: 0, drawn: 0, lost: 0 },
     leadAtHalf: 0,
+    leadLost: 0,
     comebacks: 0,
     biggestWin: null,
     biggestLoss: null,
@@ -56,6 +59,11 @@ function emptyTeam(teamId: number, team: string, leagueId: number): TeamStats {
     avgSpectators: null,
     goalsForByPeriod: Array(PERIODS).fill(0),
     goalsAgainstByPeriod: Array(PERIODS).fill(0),
+    timeLeading: 0,
+    timeTrailing: 0,
+    timeTotal: 0,
+    powerPlay: { for: 0, against: 0 },
+    shortHanded: { for: 0, against: 0 },
     reports: 0,
   };
 }
@@ -74,8 +82,15 @@ function addResult(stats: TeamStats, game: Game, home: boolean) {
   if (outcome === 'D') (stats.drawn++, split.drawn++);
   if (outcome === 'L') (stats.lost++, split.lost++);
   stats.form = [...stats.form, outcome].slice(-5);
+  stats.streak = stats.streak?.type === outcome ? { type: outcome, length: stats.streak.length + 1 } : { type: outcome, length: 1 };
+  if (Math.abs(own - other) <= 2) {
+    if (outcome === 'W') stats.close.won++;
+    if (outcome === 'D') stats.close.drawn++;
+    if (outcome === 'L') stats.close.lost++;
+  }
   if (ownHt !== null && otherHt !== null) {
     if (ownHt > otherHt) stats.leadAtHalf++;
+    if (ownHt > otherHt && outcome !== 'W') stats.leadLost++;
     if (ownHt < otherHt && outcome === 'W') stats.comebacks++;
   }
   const diff = own - other;
@@ -84,9 +99,68 @@ function addResult(stats: TeamStats, game: Game, home: boolean) {
   if (diff < 0 && (!stats.biggestLoss || -diff > stats.biggestLoss.diff)) stats.biggestLoss = { gameId: game.id, diff: -diff, score };
 }
 
+const isGoal = (e: MatchEvent) => e.type === 'goal' || e.type === 'sevenGoal';
+const PENALTY_SECONDS = 120;
+
+interface SideFlow {
+  leading: number;
+  trailing: number;
+  powerPlay: { for: number; against: number };
+  shortHanded: { for: number; against: number };
+}
+
+/** Time spent leading/trailing and goals scored with more or fewer players on court, per side. */
+export function gameFlow(report: Report): { total: number; home: SideFlow; guest: SideFlow } {
+  const make = (): SideFlow => ({ leading: 0, trailing: 0, powerPlay: { for: 0, against: 0 }, shortHanded: { for: 0, against: 0 } });
+  const flow = { home: make(), guest: make() };
+  const goals = report.events.filter(isGoal);
+  const total = Math.max(3600, ...report.events.map((e) => e.t));
+  let last = 0;
+  let diff = 0;
+  const addTime = (until: number) => {
+    const span = Math.max(0, until - last);
+    if (diff > 0) (flow.home.leading += span, (flow.guest.trailing += span));
+    if (diff < 0) (flow.guest.leading += span, (flow.home.trailing += span));
+    last = Math.max(last, until);
+  };
+  for (const goal of goals) {
+    addTime(goal.t);
+    diff = goal.homeScore - goal.guestScore;
+  }
+  addTime(total);
+
+  // A disqualification also leaves the team a player short for two minutes.
+  const penalties: { side: 'home' | 'guest'; t: number; index: number }[] = [];
+  report.events.forEach((e, index) => {
+    if ((e.type === 'twoMinutes' || e.type === 'disqualification') && e.side) penalties.push({ side: e.side, t: e.t, index });
+  });
+  report.events.forEach((e, index) => {
+    if (!isGoal(e) || !e.side) return;
+    const serving = (side: 'home' | 'guest') =>
+      penalties.filter((p) => p.side === side && p.index < index && e.t - p.t < PENALTY_SECONDS).length;
+    const homeDown = serving('home');
+    const guestDown = serving('guest');
+    if (homeDown === guestDown) return;
+    const ahead = homeDown < guestDown ? 'home' : 'guest';
+    const behind = ahead === 'home' ? 'guest' : 'home';
+    if (e.side === ahead) (flow[ahead].powerPlay.for++, flow[behind].shortHanded.against++);
+    else (flow[behind].shortHanded.for++, flow[ahead].powerPlay.against++);
+  });
+  return { total, ...flow };
+}
+
 function addReport(stats: TeamStats, report: Report, side: 'home' | 'guest', spectators: number[]) {
   const sheet = report[side];
   stats.reports++;
+  const flow = gameFlow(report);
+  const own = flow[side];
+  stats.timeTotal += flow.total;
+  stats.timeLeading += own.leading;
+  stats.timeTrailing += own.trailing;
+  stats.powerPlay.for += own.powerPlay.for;
+  stats.powerPlay.against += own.powerPlay.against;
+  stats.shortHanded.for += own.shortHanded.for;
+  stats.shortHanded.against += own.shortHanded.against;
   for (const line of [...sheet.players, ...sheet.officials]) {
     stats.sevenGoals += line.sevenGoals;
     stats.sevenAttempts += line.sevenAttempts;
@@ -96,7 +170,7 @@ function addReport(stats: TeamStats, report: Report, side: 'home' | 'guest', spe
   }
   for (const event of report.events) {
     if (event.type === 'timeout' && event.side === side) stats.timeouts++;
-    if (event.type === 'goal' || event.type === 'sevenGoal') {
+    if (isGoal(event)) {
       const bucket = event.side === side ? stats.goalsForByPeriod : stats.goalsAgainstByPeriod;
       if (event.side) bucket[periodOf(event)]++;
     }
@@ -133,6 +207,9 @@ function addPlayers(
         twoMinutes: 0,
         warnings: 0,
         disqualifications: 0,
+        teamGoals: 0,
+        bestGame: null,
+        longestStreak: 0,
         log: [],
         goalsByPeriod: Array(PERIODS).fill(0),
         rankInLeague: null,
@@ -143,10 +220,14 @@ function addPlayers(
     player.sevenGoals += line.sevenGoals;
     player.sevenAttempts += line.sevenAttempts;
     player.twoMinutes += line.twoMinutes.length;
+    player.teamGoals += (home ? game.homeGoals : game.guestGoals) ?? 0;
     if (line.warning) player.warnings++;
     if (line.disqualification) player.disqualifications++;
+    if (line.goals > 0 && (!player.bestGame || line.goals > player.bestGame.goals)) {
+      player.bestGame = { gameId: game.id, goals: line.goals, opponent: home ? game.guest : game.home };
+    }
     for (const event of report.events) {
-      if ((event.type === 'goal' || event.type === 'sevenGoal') && event.side === side && event.player === line.name) {
+      if (isGoal(event) && event.side === side && event.player === line.name) {
         player.goalsByPeriod[periodOf(event)]++;
       }
     }
@@ -174,7 +255,7 @@ const cache = new Map<number, { stamp: string; data: SeasonData }>();
 export async function seasonData(season: number): Promise<SeasonData> {
   const leagues = await loadLeagues(season);
   const games = leagues.flatMap((l) => l.games);
-  const finished = games.filter((g) => g.status === 'finished');
+  const finished = games.filter((g) => g.status === 'finished').sort((a, b) => a.ts - b.ts);
   const reports = new Map<number, Report>();
   for (const game of finished) {
     const report = await read<Report>(keys.report(game.id));
@@ -210,6 +291,13 @@ export async function seasonData(season: number): Promise<SeasonData> {
   }
   for (const [teamId, list] of spectators) {
     if (list.length) teams.get(teamId)!.avgSpectators = Math.round(list.reduce((a, b) => a + b, 0) / list.length);
+  }
+  for (const player of players.values()) {
+    let run = 0;
+    for (const entry of player.log) {
+      run = entry.goals > 0 ? run + 1 : 0;
+      player.longestStreak = Math.max(player.longestStreak, run);
+    }
   }
   for (const league of leagues) {
     const ranked = [...players.values()].filter((p) => p.leagueId === league.id).sort((a, b) => b.goals - a.goals);

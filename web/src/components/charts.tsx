@@ -296,3 +296,96 @@ export function CompareBar({ label, home, guest, format = String }: { label: str
     </div>
   );
 }
+
+export interface RankSeries {
+  id: number;
+  label: string;
+  ranks: number[];
+  /** Highlighted series get a color; the rest are drawn as faint context lines. */
+  color?: string;
+}
+
+/** Table position per matchday; rank 1 at the top. */
+export function RankChart({ rounds, teams, series }: { rounds: number[]; teams: number; series: RankSeries[] }) {
+  const [ref, width] = useWidth<HTMLDivElement>();
+  const [hover, setHover] = useState<number | null>(null);
+  const height = Math.max(200, Math.min(320, teams * 20 + 40));
+  const m = { top: 12, right: 30, bottom: 26, left: 30 };
+  const innerW = Math.max(0, width - m.left - m.right);
+  const innerH = height - m.top - m.bottom;
+  const x = (i: number) => m.left + (rounds.length > 1 ? (i / (rounds.length - 1)) * innerW : innerW / 2);
+  const y = (rank: number) => m.top + (teams > 1 ? ((rank - 1) / (teams - 1)) * innerH : innerH / 2);
+  const highlighted = series.filter((s) => s.color);
+  const context = series.filter((s) => !s.color);
+  const line = (ranks: number[]) => ranks.map((r, i) => `${i ? 'L' : 'M'}${x(i)},${y(r)}`).join('');
+  const labelEvery = Math.ceil(rounds.length / Math.max(1, Math.floor(innerW / 34)));
+  const rankTicks = [...new Set([1, ...Array.from({ length: teams }, (_, i) => i + 1).filter((r) => r % (teams > 10 ? 3 : 2) === 0), teams])];
+
+  const onMove = (clientX: number) => {
+    if (!rounds.length) return;
+    const rect = ref.current!.getBoundingClientRect();
+    const rel = clientX - rect.left - m.left;
+    const i = rounds.length > 1 ? Math.round((rel / innerW) * (rounds.length - 1)) : 0;
+    setHover(i < 0 || i >= rounds.length ? null : i);
+  };
+
+  return (
+    <div>
+      {highlighted.length > 0 && <Legend items={highlighted.map((s) => ({ label: s.label, color: s.color! }))} />}
+      <div ref={ref} className="relative touch-pan-y select-none" onPointerMove={(e) => onMove(e.clientX)} onPointerLeave={() => setHover(null)}>
+        {width > 0 && (
+          <svg width={width} height={height} role="img" aria-label={`Tabellenverlauf: ${highlighted.map((s) => s.label).join(', ')}`}>
+            {rankTicks.map((r) => (
+              <g key={r}>
+                <line x1={m.left} x2={width - m.right} y1={y(r)} y2={y(r)} stroke={GRID} />
+                <text x={m.left - 8} y={y(r)} dy="0.32em" textAnchor="end" fontSize={11} fill={AXIS}>
+                  {r}.
+                </text>
+              </g>
+            ))}
+            {rounds.map((round, i) =>
+              i % labelEvery === 0 || i === rounds.length - 1 ? (
+                <text key={round} x={x(i)} y={height - 8} textAnchor="middle" fontSize={11} fill={AXIS}>
+                  {round}
+                </text>
+              ) : null,
+            )}
+            {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={m.top} y2={m.top + innerH} stroke="var(--color-ink-3)" strokeDasharray="3 4" />}
+            {context.map((s) => (
+              <path key={s.id} d={line(s.ranks)} fill="none" stroke="var(--color-ink-3)" strokeOpacity={0.25} strokeWidth={1.5} strokeLinejoin="round" />
+            ))}
+            {highlighted.map((s) => (
+              <g key={s.id}>
+                <path d={line(s.ranks)} fill="none" stroke={s.color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+                {s.ranks.map((r, i) => (
+                  <circle key={i} cx={x(i)} cy={y(r)} r={hover === i ? 4.5 : rounds.length > 12 ? 0 : 3} fill={s.color} stroke="var(--color-surface)" strokeWidth={1.5} />
+                ))}
+                {s.ranks.length > 0 && (
+                  <text x={x(s.ranks.length - 1) + 8} y={y(s.ranks.at(-1)!)} dy="0.32em" fontSize={12} fontWeight={700} fill={s.color}>
+                    {s.ranks.at(-1)}.
+                  </text>
+                )}
+              </g>
+            ))}
+          </svg>
+        )}
+        {hover !== null && highlighted.length > 0 && (
+          <Tooltip x={x(hover)} y={m.top + 10} width={width}>
+            <div className="font-semibold">Nach dem {rounds[hover]}. Spieltag</div>
+            {[...highlighted]
+              .sort((a, b) => a.ranks[hover] - b.ranks[hover])
+              .map((s) => (
+                <div key={s.id} className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-sm" style={{ background: s.color }} />
+                  {s.label}: <strong>{s.ranks[hover]}.</strong>
+                </div>
+              ))}
+          </Tooltip>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Distinct colors for highlighted teams in multi-team charts. */
+export const SERIES_COLORS = ['var(--color-brand)', 'var(--color-guest)', 'var(--color-win)', '#a855f7', 'var(--color-draw)', '#0ea5a4'];
