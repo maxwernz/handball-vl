@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
-import type { GameDetail, MatchEvent, PlayerLine, Report, TeamSheet } from '../../../shared/types.ts';
-import { useGame } from '../api.ts';
+import type { GameDetail, MatchEvent, PlayerLine, Report, TeamDetail, TeamSheet } from '../../../shared/types.ts';
+import { useGame, useTeam } from '../api.ts';
 import { CompareBar, ScoreFlowChart } from '../components/charts.tsx';
 import { GameList } from '../components/GameRow.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
-import { Empty, ErrorBox, LiveBadge, Loading, Section, Tabs } from '../components/ui.tsx';
+import { Empty, ErrorBox, FormBadges, LiveBadge, Loading, Section, Tabs } from '../components/ui.tsx';
 import { formatLongDay, formatTime } from '../lib/format.ts';
 import { matchStats } from '../lib/matchStats.ts';
 import { playerKey } from '../../../shared/players.ts';
 
-type Tab = 'summary' | 'ticker' | 'lineups' | 'stats';
+type Tab = 'summary' | 'ticker' | 'lineups' | 'stats' | 'compare';
 
 function Scoreboard({ data }: { data: GameDetail }) {
   const { game, league } = data;
@@ -220,12 +220,23 @@ function Lineup({ sheet, teamId, side }: { sheet: TeamSheet; teamId: number | nu
 }
 
 function MatchStatsView({ report, data }: { report: Report; data: GameDetail }) {
-  const { home, guest } = matchStats(report);
+  const { home, guest, flow } = matchStats(report);
+  const minutes = (s: number) => `${Math.round(s / 60)} min`;
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="card p-4">
         <h3 className="mb-2 font-semibold">Spielverlauf</h3>
         <ScoreFlowChart events={report.events} home={data.game.home} guest={data.game.guest} />
+        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-(--color-line) pt-3 text-center text-sm">
+          <div>
+            <div className="tabular text-xl font-bold">{flow.leadChanges}</div>
+            <div className="text-xs text-(--color-ink-3)">Führungswechsel</div>
+          </div>
+          <div>
+            <div className="tabular text-xl font-bold">{flow.ties}</div>
+            <div className="text-xs text-(--color-ink-3)">Ausgleiche</div>
+          </div>
+        </div>
       </div>
       <div className="card px-4 py-2">
         <CompareBar label="Feldtore" home={home.fieldGoals} guest={guest.fieldGoals} />
@@ -236,9 +247,74 @@ function MatchStatsView({ report, data }: { report: Report; data: GameDetail }) 
         </div>
         <CompareBar label="Höchste Führung" home={home.maxLead} guest={guest.maxLead} />
         <CompareBar label="Längste Torserie" home={home.longestRun} guest={guest.longestRun} />
+        <CompareBar label="In Führung" home={home.timeLeading} guest={guest.timeLeading} format={minutes} />
+        <CompareBar label="Tore in Überzahl" home={home.powerPlayGoals} guest={guest.powerPlayGoals} />
         <CompareBar label="Zeitstrafen" home={home.twoMinutes} guest={guest.twoMinutes} />
         <CompareBar label="Verwarnungen" home={home.warnings} guest={guest.warnings} />
         <CompareBar label="Auszeiten" home={home.timeouts} guest={guest.timeouts} />
+      </div>
+    </div>
+  );
+}
+
+function Comparison({ homeId, guestId }: { homeId: number; guestId: number }) {
+  const home = useTeam(homeId);
+  const guest = useTeam(guestId);
+  if (home.isLoading || guest.isLoading) return <Loading />;
+  if (!home.data || !guest.data) return <ErrorBox error={home.error ?? guest.error} />;
+  const a = home.data;
+  const b = guest.data;
+  const avg = (v: number, n: number) => (n ? v / n : 0);
+  const num = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+  const rate = (made: number, att: number) => (att ? made / att : 0);
+  const pct = (n: number) => `${Math.round(n * 100)} %`;
+  const record = (r: { won: number; drawn: number; lost: number }) => `${r.won}-${r.drawn}-${r.lost}`;
+  const scorer = (t: TeamDetail) => {
+    const p = t.players[0];
+    return p ? (
+      <Link to={`/spieler/${p.key}`} className="hover:underline">
+        {p.name} ({p.goals})
+      </Link>
+    ) : (
+      '–'
+    );
+  };
+  const row = (label: string, left: React.ReactNode, right: React.ReactNode) => (
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2 text-sm">
+      <span className="tabular min-w-0 truncate font-semibold">{left}</span>
+      <span className="text-center text-(--color-ink-2)">{label}</span>
+      <span className="tabular min-w-0 truncate text-right font-semibold">{right}</span>
+    </div>
+  );
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="card min-w-0 divide-y divide-(--color-line) px-4 py-2">
+        <div className="grid grid-cols-2 gap-3 py-2 text-sm font-semibold">
+          <Link to={`/team/${homeId}`} className="flex min-w-0 items-center gap-2 hover:underline">
+            <TeamLogo teamId={homeId} name={a.team.name} size={24} />
+            <span className="truncate">{a.team.name}</span>
+          </Link>
+          <Link to={`/team/${guestId}`} className="flex min-w-0 items-center justify-end gap-2 text-right hover:underline">
+            <span className="truncate">{b.team.name}</span>
+            <TeamLogo teamId={guestId} name={b.team.name} size={24} />
+          </Link>
+        </div>
+        {row('Platz', a.tableRow ? `${a.tableRow.rank}.` : '–', b.tableRow ? `${b.tableRow.rank}.` : '–')}
+        {row('Punkte', a.tableRow ? `${a.tableRow.pointsPlus}:${a.tableRow.pointsMinus}` : '–', b.tableRow ? `${b.tableRow.pointsPlus}:${b.tableRow.pointsMinus}` : '–')}
+        {row('Form', <FormBadges form={a.stats.form} />, <span className="flex justify-end"><FormBadges form={b.stats.form} /></span>)}
+        {row('Heim / Auswärts', record(a.stats.home), record(b.stats.away))}
+        {row('Torschütze', scorer(a), scorer(b))}
+      </div>
+      <div className="card min-w-0 px-4 py-2">
+        <CompareBar label="Tore pro Spiel" home={avg(a.stats.goalsFor, a.stats.played)} guest={avg(b.stats.goalsFor, b.stats.played)} format={num} />
+        <CompareBar label="Gegentore pro Spiel" home={avg(a.stats.goalsAgainst, a.stats.played)} guest={avg(b.stats.goalsAgainst, b.stats.played)} format={num} />
+        <CompareBar label="7-Meter-Quote" home={rate(a.stats.sevenGoals, a.stats.sevenAttempts)} guest={rate(b.stats.sevenGoals, b.stats.sevenAttempts)} format={pct} />
+        <CompareBar label="Zeitstrafen pro Spiel" home={avg(a.stats.twoMinutes, a.stats.reports)} guest={avg(b.stats.twoMinutes, b.stats.reports)} format={num} />
+        <CompareBar label="Spielzeit in Führung" home={rate(a.stats.timeLeading, a.stats.timeTotal)} guest={rate(b.stats.timeLeading, b.stats.timeTotal)} format={pct} />
+        <CompareBar label="Knappe Spiele gewonnen" home={a.stats.close.won} guest={b.stats.close.won} />
+        <p className="py-2 text-xs text-(--color-ink-3)">
+          Saisonwerte: Heimbilanz von {a.team.name}, Auswärtsbilanz von {b.team.name}. Knapp = höchstens 2 Tore Unterschied.
+        </p>
       </div>
     </div>
   );
@@ -251,14 +327,17 @@ export function GamePage() {
   if (isLoading) return <Loading />;
   if (error || !data) return <ErrorBox error={error} />;
 
-  const { report, summary } = data;
+  const { report, summary, game } = data;
+  const compare = game.homeId !== null && game.guestId !== null ? [{ id: 'compare' as const, label: 'Vergleich' }] : [];
   const tabs: { id: Tab; label: string }[] = [
+    ...(game.status === 'scheduled' ? compare : []),
     ...(summary ? [{ id: 'summary' as const, label: 'Bericht' }] : []),
     ...(report ? [
       { id: 'ticker' as const, label: 'Ticker' },
       { id: 'lineups' as const, label: 'Aufstellung' },
       { id: 'stats' as const, label: 'Statistik' },
     ] : []),
+    ...(game.status !== 'scheduled' ? compare : []),
   ];
   const active = tab ?? tabs[0]?.id;
 
@@ -282,6 +361,7 @@ export function GamePage() {
         </div>
       )}
       {active === 'stats' && report && <MatchStatsView report={report} data={data} />}
+      {active === 'compare' && game.homeId !== null && game.guestId !== null && <Comparison homeId={game.homeId} guestId={game.guestId} />}
 
       {data.game.status === 'finished' && !report && (
         <Empty>Der Spielbericht ist noch nicht verfügbar – er wird automatisch geladen, sobald h4a ihn veröffentlicht.</Empty>

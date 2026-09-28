@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import type { TeamDetail } from '../../../shared/types.ts';
-import { useTeam } from '../api.ts';
-import { PeriodBars } from '../components/charts.tsx';
+import { useLeague, useTeam } from '../api.ts';
+import { PeriodBars, RankChart } from '../components/charts.tsx';
 import { GameList } from '../components/GameRow.tsx';
-import { PlayerTable, type PlayerView } from '../components/StatTables.tsx';
+import { PLAYER_VIEWS, PlayerTable, type PlayerView } from '../components/StatTables.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
-import { Chips, Empty, ErrorBox, FormBadges, Loading, Section, StatTile, Tabs, TextLink } from '../components/ui.tsx';
+import { Chips, Empty, ErrorBox, FavoriteStar, FormBadges, Loading, Section, StatTile, Tabs, TextLink } from '../components/ui.tsx';
 import { toggleFavorite, useFavorites } from '../lib/favorites.ts';
 import { perGame, percent, signed } from '../lib/format.ts';
+import { rankHistory } from '../lib/standings.ts';
 
 type Tab = 'games' | 'squad' | 'stats';
 
@@ -24,9 +25,34 @@ function Record({ label, r }: { label: string; r: { won: number; drawn: number; 
   );
 }
 
+function RankHistoryCard({ data }: { data: TeamDetail }) {
+  const { data: league } = useLeague(data.league.id);
+  const history = useMemo(() => (league ? rankHistory(league) : null), [league]);
+  if (!league || !history) return <div className="card h-64 animate-pulse" />;
+  const ranks = history.ranks.get(data.team.id) ?? [];
+  if (!ranks.length) return null;
+  return (
+    <div className="card p-4 lg:col-span-2">
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <h3 className="font-semibold">Tabellenverlauf</h3>
+        <TextLink to={`/liga/${league.id}?tab=history`}>Mit anderen Teams vergleichen →</TextLink>
+      </div>
+      <RankChart
+        rounds={history.rounds}
+        teams={league.teams.length}
+        series={[...history.ranks].map(([id, r]) => ({ id, label: id === data.team.id ? data.team.name : '', ranks: r, color: id === data.team.id ? 'var(--color-brand)' : undefined }))}
+      />
+      <p className="mt-1 text-xs text-(--color-ink-3)">
+        Bester Platz {Math.min(...ranks)}., schlechtester {Math.max(...ranks)}. · Graue Linien: übrige Teams
+      </p>
+    </div>
+  );
+}
+
 function StatsTab({ data }: { data: TeamDetail }) {
   const s = data.stats;
   if (!s.played) return <Empty>Noch keine Spiele gespielt.</Empty>;
+  const streakLabel = { W: 'Siege', D: 'Unentschieden', L: 'Niederlagen' };
   const row = (label: string, value: React.ReactNode) => (
     <div className="flex items-center justify-between py-2 text-sm">
       <span className="text-(--color-ink-2)">{label}</span>
@@ -35,6 +61,7 @@ function StatsTab({ data }: { data: TeamDetail }) {
   );
   return (
     <div className="grid gap-4 lg:grid-cols-2">
+      <RankHistoryCard data={data} />
       <div className="card p-4">
         <h3 className="mb-2 font-semibold">Tore nach Spielabschnitt</h3>
         {s.reports ? (
@@ -51,8 +78,14 @@ function StatsTab({ data }: { data: TeamDetail }) {
       <div className="card divide-y divide-(--color-line) px-4 py-2">
         <Record label="Heim" r={s.home} />
         <Record label="Auswärts" r={s.away} />
+        <Record label="Knappe Spiele (≤ 2 Tore)" r={s.close} />
+        {s.streak && s.streak.length > 1 && row('Aktuelle Serie', `${s.streak.length} ${streakLabel[s.streak.type]}`)}
         {row('Zur Halbzeit geführt', `${s.leadAtHalf} von ${s.played}`)}
+        {row('Davon nicht gewonnen', s.leadLost)}
         {row('Siege nach Halbzeitrückstand', s.comebacks)}
+        {s.reports > 0 && row('Spielzeit in Führung / Rückstand', `${percent(s.timeLeading, s.timeTotal)} / ${percent(s.timeTrailing, s.timeTotal)}`)}
+        {s.reports > 0 && row('Tore : Gegentore in Überzahl', `${s.powerPlay.for}:${s.powerPlay.against}`)}
+        {s.reports > 0 && row('Tore : Gegentore in Unterzahl', `${s.shortHanded.for}:${s.shortHanded.against}`)}
         {row(
           'Höchster Sieg',
           s.biggestWin ? <Link className="hover:underline" to={`/spiel/${s.biggestWin.gameId}`}>{s.biggestWin.score} (+{s.biggestWin.diff})</Link> : '–',
@@ -100,14 +133,7 @@ export function TeamPage() {
             <FormBadges form={stats.form} />
           </div>
         </div>
-        <button
-          onClick={() => toggleFavorite(team.name)}
-          aria-pressed={isFav}
-          aria-label={isFav ? 'Aus Favoriten entfernen' : 'Als Favorit markieren'}
-          className={`self-start rounded-full p-2 text-2xl leading-none transition hover:bg-(--color-surface-2) ${isFav ? 'text-(--color-draw)' : 'text-(--color-ink-3)'}`}
-        >
-          {isFav ? '★' : '☆'}
-        </button>
+        <FavoriteStar on={isFav} onClick={() => toggleFavorite(team.name)} />
       </div>
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -152,11 +178,7 @@ export function TeamPage() {
         (data.players.length ? (
           <>
             <Chips
-              options={[
-                { id: 'goals', label: 'Tore' },
-                { id: 'seven', label: '7-Meter' },
-                { id: 'penalties', label: 'Strafen' },
-              ]}
+              options={PLAYER_VIEWS}
               value={playerView}
               onChange={setPlayerView}
             />

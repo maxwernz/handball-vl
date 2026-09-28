@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useEffect } from 'react';
 import { BASE, useGames, useIndex, useMeta, useSeasonId } from '../api.ts';
+import { useFavoriteLeagues } from '../lib/favorites.ts';
 import { leagueLabel } from '../lib/format.ts';
 import { useSeason } from '../lib/season.tsx';
 import { storage } from '../lib/storage.ts';
@@ -47,8 +48,11 @@ export function Layout() {
   const { data: index } = useIndex();
   const live = useLiveCount();
   const location = useLocation();
+  const favoriteLeagues = useFavoriteLeagues();
+  // Favorite leagues first; the sort is stable, so the rest keep their order.
+  const leagues = [...(meta?.leagues ?? [])].sort((a, b) => Number(favoriteLeagues.includes(b.short)) - Number(favoriteLeagues.includes(a.short)));
   const lastLeague = storage.get('lastLeague');
-  const leagueHref = `/liga/${lastLeague && meta?.leagues.some((l) => String(l.id) === lastLeague) ? lastLeague : (meta?.leagues[0]?.id ?? '')}`;
+  const leagueHref = `/liga/${lastLeague && leagues.some((l) => String(l.id) === lastLeague) ? lastLeague : (leagues[0]?.id ?? '')}`;
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -82,10 +86,11 @@ export function Layout() {
             <SeasonSelect />
           </div>
         </div>
-        {meta && meta.leagues.length > 0 && (
+        {leagues.length > 0 && (
           <nav className="scrollbar-none mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 pb-2">
-            {meta.leagues.map((l) => (
+            {leagues.map((l) => (
               <NavLink key={l.id} to={`/liga/${l.id}`} className={navItem} title={l.name}>
+                {favoriteLeagues.includes(l.short) && <span aria-label="Favorit">★ </span>}
                 {leagueLabel(l.short)}
               </NavLink>
             ))}

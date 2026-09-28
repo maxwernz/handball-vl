@@ -4,8 +4,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type {
+  Game,
   GameDetail,
+  GameRecord,
   LeagueRef,
+  LeagueSummary,
   Meta,
   Report,
   SiteIndex,
@@ -28,6 +31,36 @@ async function emit(relative: string, value: unknown) {
   await fs.writeFile(file, JSON.stringify(value));
 }
 
+function record(game: Game, value: number): GameRecord {
+  return { gameId: game.id, home: game.home, guest: game.guest, score: `${game.homeGoals}:${game.guestGoals}`, value };
+}
+
+function summary(data: SeasonData, finished: Game[], inLeague: (l: number) => boolean): LeagueSummary {
+  const result: LeagueSummary = { homeWins: 0, draws: 0, awayWins: 0, avgSpectators: null, biggestWin: null, mostGoals: null, topPlayerGame: null };
+  const spectators: number[] = [];
+  for (const game of finished) {
+    const home = game.homeGoals!;
+    const guest = game.guestGoals!;
+    if (home > guest) result.homeWins++;
+    else if (home < guest) result.awayWins++;
+    else result.draws++;
+    const diff = Math.abs(home - guest);
+    if (!result.biggestWin || diff > result.biggestWin.value) result.biggestWin = record(game, diff);
+    if (!result.mostGoals || home + guest > result.mostGoals.value) result.mostGoals = record(game, home + guest);
+    const count = data.reports.get(game.id)?.spectators;
+    if (count != null) spectators.push(count);
+  }
+  if (spectators.length) result.avgSpectators = Math.round(spectators.reduce((a, b) => a + b, 0) / spectators.length);
+  for (const player of data.players.values()) {
+    if (!inLeague(player.leagueId) || !player.bestGame) continue;
+    if (!result.topPlayerGame || player.bestGame.goals > result.topPlayerGame.goals) {
+      const { key, name, teamId, team } = player;
+      result.topPlayerGame = { key, name, teamId, team, ...player.bestGame };
+    }
+  }
+  return result;
+}
+
 function stats(data: SeasonData, leagueId: number | null): StatsResponse {
   const inLeague = (l: number) => leagueId === null || l === leagueId;
   const finished = data.games.filter((g) => g.status === 'finished' && inLeague(g.leagueId));
@@ -36,6 +69,7 @@ function stats(data: SeasonData, leagueId: number | null): StatsResponse {
     teams: [...data.teams.values()].filter((t) => inLeague(t.leagueId)),
     reports: finished.filter((g) => data.reports.has(g.id)).length,
     finished: finished.length,
+    summary: summary(data, finished, inLeague),
   };
 }
 
@@ -62,6 +96,7 @@ async function exportSeason(season: number, current: boolean) {
     season,
     leagues: refs.map(toRef),
     logos: await exportLogos(data),
+    teams: data.leagues.flatMap((l) => l.teams.map((t) => ({ id: t.id, name: t.name, leagueId: l.id }))),
     incomplete: !current && !(await exists(keys.complete(season))),
   };
   await emit(`${base}/meta`, meta);

@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import type { Game } from '../../../shared/types.ts';
+import { useFavoriteTeamIds } from '../lib/favorites.ts';
 import { formatDay, formatTime } from '../lib/format.ts';
 import { TeamLogo } from './TeamLogo.tsx';
 import { LiveBadge } from './ui.tsx';
@@ -13,8 +14,23 @@ function outcomeFor(game: Game, teamId: number | undefined) {
 }
 
 /** One game as a compact, tappable row: date · home · score · guest. */
-export function GameRow({ game, showDate = true, perspective, leagueTag }: { game: Game; showDate?: boolean; perspective?: number; leagueTag?: string }) {
+export function GameRow({
+  game,
+  showDate = true,
+  perspective,
+  leagueTag,
+  favorites,
+}: {
+  game: Game;
+  showDate?: boolean;
+  perspective?: number;
+  leagueTag?: string;
+  favorites?: Set<number>;
+}) {
   const outcome = outcomeFor(game, perspective);
+  // Favorite teams stand out, except on their own team page where every row is theirs.
+  const fav = (id: number | null) => id !== null && id !== perspective && !!favorites?.has(id);
+  const nameClass = (id: number | null, won: boolean) => `${won || fav(id) ? 'font-semibold' : ''} ${fav(id) ? 'text-(--color-brand)' : ''}`;
   const scoreColor = { W: 'bg-(--color-win)', D: 'bg-(--color-draw)', L: 'bg-(--color-loss)' };
   const played = game.status !== 'scheduled';
   const homeWon = game.status === 'finished' && game.homeGoals! > game.guestGoals!;
@@ -37,7 +53,7 @@ export function GameRow({ game, showDate = true, perspective, leagueTag }: { gam
             ([side, name, id, won, goals]) => (
               <div key={side} className="flex items-center gap-2">
                 <TeamLogo teamId={id} name={name} size={22} />
-                <span className={`min-w-0 flex-1 truncate text-sm ${won ? 'font-semibold' : ''}`}>{name}</span>
+                <span className={`min-w-0 flex-1 truncate text-sm ${nameClass(id, won)}`}>{name}</span>
                 <span className={`tabular w-6 text-right text-sm ${won ? 'font-bold' : played ? 'text-(--color-ink-2)' : 'text-(--color-ink-3)'}`}>
                   {played ? (goals ?? 0) : '–'}
                 </span>
@@ -51,7 +67,7 @@ export function GameRow({ game, showDate = true, perspective, leagueTag }: { gam
       <div className="hidden items-center gap-3 px-4 py-2.5 sm:flex">
         <div className="w-20 shrink-0 text-xs leading-tight text-(--color-ink-3)">{meta}</div>
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2 text-right">
-          <span className={`truncate text-sm ${homeWon ? 'font-semibold' : ''}`}>{game.home}</span>
+          <span className={`truncate text-sm ${nameClass(game.homeId, homeWon)}`}>{game.home}</span>
           <TeamLogo teamId={game.homeId} name={game.home} size={24} />
         </div>
         <div className={`${scoreBox} flex w-16 shrink-0 flex-col items-center justify-center py-1`}>
@@ -64,7 +80,7 @@ export function GameRow({ game, showDate = true, perspective, leagueTag }: { gam
         </div>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <TeamLogo teamId={game.guestId} name={game.guest} size={24} />
-          <span className={`truncate text-sm ${guestWon ? 'font-semibold' : ''}`}>{game.guest}</span>
+          <span className={`truncate text-sm ${nameClass(game.guestId, guestWon)}`}>{game.guest}</span>
         </div>
       </div>
     </Link>
@@ -73,10 +89,11 @@ export function GameRow({ game, showDate = true, perspective, leagueTag }: { gam
 
 export function GameList({ games, ...props }: { games: Game[]; showDate?: boolean; perspective?: number; leagueTag?: (g: Game) => string }) {
   const { leagueTag, ...rest } = props;
+  const favorites = useFavoriteTeamIds();
   return (
     <div className="card divide-y divide-(--color-line) overflow-hidden">
       {games.map((g) => (
-        <GameRow key={g.id} game={g} {...rest} leagueTag={leagueTag?.(g)} />
+        <GameRow key={g.id} game={g} {...rest} leagueTag={leagueTag?.(g)} favorites={favorites} />
       ))}
     </div>
   );

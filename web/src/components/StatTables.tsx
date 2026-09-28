@@ -1,8 +1,9 @@
 import { Link } from 'react-router';
 import type { LeagueRef, PlayerStats, TeamStats } from '../../../shared/types.ts';
-import { leagueLabel, perGame, percent } from '../lib/format.ts';
+import { leagueLabel, perGame, percent, signed } from '../lib/format.ts';
 import { SortableTable, type Column } from './SortableTable.tsx';
 import { TeamLogo } from './TeamLogo.tsx';
+import { Chips } from './ui.tsx';
 
 function PlayerCell({ p, showTeam }: { p: PlayerStats; showTeam: boolean }) {
   return (
@@ -16,7 +17,14 @@ function PlayerCell({ p, showTeam }: { p: PlayerStats; showTeam: boolean }) {
   );
 }
 
-export type PlayerView = 'goals' | 'seven' | 'penalties';
+export type PlayerView = 'goals' | 'share' | 'seven' | 'penalties';
+
+export const PLAYER_VIEWS: { id: PlayerView; label: string }[] = [
+  { id: 'goals', label: 'Torschützen' },
+  { id: 'share', label: 'Anteil & Serien' },
+  { id: 'seven', label: '7-Meter' },
+  { id: 'penalties', label: 'Strafen' },
+];
 
 export function PlayerTable({
   players,
@@ -56,6 +64,25 @@ export function PlayerTable({
         { id: 'seven', label: '7m', title: '7-Meter-Tore', hideBelow: 'sm', value: (p) => p.sevenGoals },
       ],
     },
+    share: {
+      sort: 'share',
+      filter: (p) => p.goals > 0,
+      columns: [
+        name,
+        ...leagueCol,
+        games,
+        { id: 'goals', label: 'Tore', hideBelow: 'sm', value: (p) => p.goals },
+        {
+          id: 'share',
+          label: 'Anteil',
+          title: 'Anteil an den Toren der Mannschaft in den Spielen, in denen der Spieler dabei war',
+          value: (p) => (p.teamGoals ? p.goals / p.teamGoals : 0),
+          render: (p) => percent(p.goals, p.teamGoals),
+        },
+        { id: 'best', label: 'Bestwert', title: 'Meiste Tore in einem Spiel', value: (p) => p.bestGame?.goals ?? 0 },
+        { id: 'streak', label: 'Serie', title: 'Meiste Spiele in Folge mit Tor', value: (p) => p.longestStreak },
+      ],
+    },
     seven: {
       sort: 'made',
       filter: (p) => p.sevenAttempts > 0,
@@ -90,7 +117,26 @@ export function PlayerTable({
   return <SortableTable key={view} rows={rows} columns={config.columns} initialSort={config.sort} rowKey={(p) => p.key} limit={limit} />;
 }
 
-export type TeamView = 'attack' | 'discipline' | 'games';
+export type TeamView = 'attack' | 'games' | 'flow' | 'numbers' | 'discipline';
+
+export function TeamViewChips({ value, onChange }: { value: TeamView; onChange: (v: TeamView) => void }) {
+  return (
+    <Chips
+      options={[
+        { id: 'attack' as TeamView, label: 'Tore' },
+        { id: 'games' as TeamView, label: 'Bilanz' },
+        { id: 'flow' as TeamView, label: 'Spielverlauf' },
+        { id: 'numbers' as TeamView, label: 'Über-/Unterzahl' },
+        { id: 'discipline' as TeamView, label: 'Disziplin' },
+      ]}
+      value={value}
+      onChange={onChange}
+    />
+  );
+}
+
+const STREAK = { W: 'S', D: 'U', L: 'N' };
+const record = (r: { won: number; drawn: number; lost: number }) => `${r.won}-${r.drawn}-${r.lost}`;
 
 export function TeamTable({ teams, view, leagues }: { teams: TeamStats[]; view: TeamView; leagues?: LeagueRef[] }) {
   const name: Column<TeamStats> = {
@@ -142,10 +188,50 @@ export function TeamTable({ teams, view, leagues }: { teams: TeamStats[]; view: 
       columns: [
         name,
         ...leagueCol,
-        { id: 'home', label: 'Heim', title: 'Heimbilanz S-U-N', value: (t) => t.home.won * 2 + t.home.drawn, render: (t) => `${t.home.won}-${t.home.drawn}-${t.home.lost}` },
-        { id: 'away', label: 'Auswärts', title: 'Auswärtsbilanz S-U-N', value: (t) => t.away.won * 2 + t.away.drawn, render: (t) => `${t.away.won}-${t.away.drawn}-${t.away.lost}` },
-        { id: 'ht', label: 'HZ-Führ.', title: 'Zur Halbzeit geführt', hideBelow: 'sm', value: (t) => t.leadAtHalf },
-        { id: 'cb', label: 'Comebacks', title: 'Siege nach Halbzeitrückstand', hideBelow: 'sm', value: (t) => t.comebacks },
+        { id: 'home', label: 'Heim', title: 'Heimbilanz S-U-N', value: (t) => t.home.won * 2 + t.home.drawn, render: (t) => record(t.home) },
+        { id: 'away', label: 'Auswärts', title: 'Auswärtsbilanz S-U-N', value: (t) => t.away.won * 2 + t.away.drawn, render: (t) => record(t.away) },
+        { id: 'close', label: 'Knapp', title: 'Bilanz in Spielen mit höchstens 2 Toren Unterschied (S-U-N)', value: (t) => t.close.won * 2 + t.close.drawn, render: (t) => record(t.close) },
+        {
+          id: 'streak',
+          label: 'Serie',
+          title: 'Aktuelle Serie (S = Siege, U = Unentschieden, N = Niederlagen)',
+          hideBelow: 'sm',
+          value: (t) => (t.streak ? (t.streak.type === 'W' ? 1 : t.streak.type === 'D' ? 0 : -1) * t.streak.length : 0),
+          render: (t) => (t.streak ? `${t.streak.length}× ${STREAK[t.streak.type]}` : '–'),
+        },
+      ],
+    },
+    flow: {
+      sort: 'lead',
+      columns: [
+        name,
+        ...leagueCol,
+        { id: 'lead', label: 'Führung', title: 'Anteil der Spielzeit in Führung (aus Spielberichten)', value: (t) => avg(t.timeLeading, t.timeTotal), render: (t) => percent(t.timeLeading, t.timeTotal) },
+        { id: 'behind', label: 'Rückst.', title: 'Anteil der Spielzeit im Rückstand', hideBelow: 'sm', value: (t) => -avg(t.timeTrailing, t.timeTotal), render: (t) => percent(t.timeTrailing, t.timeTotal) },
+        { id: 'ht', label: 'HZ-Führ.', title: 'Zur Halbzeit geführt', value: (t) => t.leadAtHalf },
+        { id: 'lost', label: 'Verspielt', title: 'Zur Halbzeit geführt und nicht gewonnen', value: (t) => -t.leadLost, render: (t) => t.leadLost },
+        { id: 'cb', label: 'Comebacks', title: 'Siege nach Halbzeitrückstand', value: (t) => t.comebacks },
+        {
+          id: 'end',
+          label: 'Schluss',
+          title: 'Tordifferenz in den letzten 10 Minuten',
+          hideBelow: 'sm',
+          value: (t) => t.goalsForByPeriod[5] - t.goalsAgainstByPeriod[5],
+          render: (t) => signed(t.goalsForByPeriod[5] - t.goalsAgainstByPeriod[5]),
+        },
+      ],
+    },
+    numbers: {
+      sort: 'ppdiff',
+      columns: [
+        name,
+        ...leagueCol,
+        { id: 'ppfor', label: 'ÜZ Tore', title: 'Tore in Überzahl', value: (t) => t.powerPlay.for },
+        { id: 'ppagainst', label: 'ÜZ Geg.', title: 'Gegentore in Überzahl', hideBelow: 'sm', value: (t) => -t.powerPlay.against, render: (t) => t.powerPlay.against },
+        { id: 'ppdiff', label: 'ÜZ +/−', title: 'Tordifferenz in Überzahl', value: (t) => t.powerPlay.for - t.powerPlay.against, render: (t) => signed(t.powerPlay.for - t.powerPlay.against) },
+        { id: 'shfor', label: 'UZ Tore', title: 'Tore in Unterzahl', hideBelow: 'sm', value: (t) => t.shortHanded.for },
+        { id: 'shagainst', label: 'UZ Geg.', title: 'Gegentore in Unterzahl', hideBelow: 'sm', value: (t) => -t.shortHanded.against, render: (t) => t.shortHanded.against },
+        { id: 'shdiff', label: 'UZ +/−', title: 'Tordifferenz in Unterzahl', value: (t) => t.shortHanded.for - t.shortHanded.against, render: (t) => signed(t.shortHanded.for - t.shortHanded.against) },
       ],
     },
   };
