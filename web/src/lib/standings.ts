@@ -116,3 +116,44 @@ export function currentRound(games: Game[]): number | null {
   const open = rounds.find((r) => games.some((g) => g.round === r && (g.status !== 'finished' || g.ts > now - 36 * 3600_000)));
   return open ?? rounds[rounds.length - 1];
 }
+
+export type Unit = 'attack' | 'defense';
+
+export interface UnitRow {
+  rank: number;
+  teamId: number;
+  team: string;
+  played: number;
+  /** Goals scored (attack) or conceded (defense). */
+  goals: number;
+  perGame: number | null;
+  tableRank: number;
+}
+
+/**
+ * Attack or defense ranking from a table: goals scored (resp. conceded) per game,
+ * so teams with a game in hand aren't disadvantaged. Equal averages share a place;
+ * teams without a game go last.
+ */
+export function unitTable(rows: TableRow[], unit: Unit): UnitRow[] {
+  const list = rows.map((r) => {
+    const goals = unit === 'attack' ? r.goalsFor : r.goalsAgainst;
+    return { teamId: r.teamId, team: r.team, played: r.played, goals, perGame: r.played ? goals / r.played : null, tableRank: r.rank, rank: 0 };
+  });
+  const better = unit === 'attack' ? (a: number, b: number) => b - a : (a: number, b: number) => a - b;
+  list.sort((a, b) => {
+    if (a.perGame === null || b.perGame === null) return a.perGame === null ? (b.perGame === null ? 0 : 1) : -1;
+    return better(a.perGame, b.perGame) || a.tableRank - b.tableRank;
+  });
+  list.forEach((row, i) => {
+    const prev = list[i - 1];
+    row.rank = prev && prev.perGame !== null && row.perGame !== null && Math.abs(prev.perGame - row.perGame) < 1e-9 ? prev.rank : i + 1;
+  });
+  return list;
+}
+
+/** A team's attack and defense rank in its league. */
+export function unitRanks(rows: TableRow[], teamId: number) {
+  const find = (unit: Unit) => unitTable(rows, unit).find((r) => r.teamId === teamId) ?? null;
+  return { attack: find('attack'), defense: find('defense'), teams: rows.length };
+}

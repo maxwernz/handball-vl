@@ -6,21 +6,32 @@ import { RankChart, SERIES_COLORS } from '../components/charts.tsx';
 import { GameList } from '../components/GameRow.tsx';
 import { LeagueSummaryView } from '../components/LeagueSummary.tsx';
 import { StandingsTable } from '../components/StandingsTable.tsx';
+import { UnitTable } from '../components/UnitTable.tsx';
 import { PLAYER_VIEWS, PlayerTable, TeamTable, TeamViewChips, type PlayerView, type TeamView } from '../components/StatTables.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Chips, Empty, ErrorBox, FavoriteStar, Loading, Section, Tabs } from '../components/ui.tsx';
 import { toggleFavoriteLeague, useFavoriteLeagues, useFavorites } from '../lib/favorites.ts';
 import { formatDay, isoDay } from '../lib/format.ts';
-import { currentRound, rankHistory, tableFor, type TableView } from '../lib/standings.ts';
+import { currentRound, rankHistory, tableFor, type TableView, type Unit } from '../lib/standings.ts';
 import { storage } from '../lib/storage.ts';
 
 type Tab = 'table' | 'schedule' | 'history' | 'stats';
 
 function TableTab({ league }: { league: League }) {
   const [view, setView] = useState<TableView>('all');
+  const [kind, setKind] = useState<'table' | Unit>('table');
   const rows = useMemo(() => tableFor(league, view), [league, view]);
   return (
     <>
+      <Chips
+        options={[
+          { id: 'table', label: 'Punkte' },
+          { id: 'attack', label: 'Angriff' },
+          { id: 'defense', label: 'Abwehr' },
+        ]}
+        value={kind}
+        onChange={setKind}
+      />
       <Chips
         options={[
           { id: 'all', label: 'Gesamt' },
@@ -30,8 +41,13 @@ function TableTab({ league }: { league: League }) {
         value={view}
         onChange={setView}
       />
-      <StandingsTable league={league} rows={rows} />
-      {view === 'all' && league.tableNotes.map((n) => <p key={n} className="mt-2 px-1 text-xs text-(--color-ink-3)">{n}</p>)}
+      {kind === 'table' ? <StandingsTable league={league} rows={rows} /> : <UnitTable rows={rows} unit={kind} />}
+      {kind !== 'table' && (
+        <p className="mt-2 px-1 text-xs text-(--color-ink-3)">
+          {kind === 'attack' ? 'Erzielte Tore' : 'Kassierte Tore'} pro Spiel – so zählen Nachholspiele nicht als Nachteil.
+        </p>
+      )}
+      {kind === 'table' && view === 'all' && league.tableNotes.map((n) => <p key={n} className="mt-2 px-1 text-xs text-(--color-ink-3)">{n}</p>)}
       <p className="mt-1 px-1 text-xs text-(--color-ink-3)">Stand laut h4a: {league.sourceUpdated}</p>
     </>
   );

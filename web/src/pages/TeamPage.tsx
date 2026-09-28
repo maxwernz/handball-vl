@@ -9,7 +9,7 @@ import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Chips, Empty, ErrorBox, FavoriteStar, FormBadges, Loading, Section, StatTile, Tabs, TextLink } from '../components/ui.tsx';
 import { toggleFavorite, useFavorites } from '../lib/favorites.ts';
 import { perGame, percent, signed } from '../lib/format.ts';
-import { rankHistory } from '../lib/standings.ts';
+import { rankHistory, unitRanks, type UnitRow } from '../lib/standings.ts';
 
 type Tab = 'games' | 'squad' | 'stats';
 
@@ -110,6 +110,7 @@ export function TeamPage() {
   const tab = (params.get('tab') as Tab) ?? 'games';
   const [playerView, setPlayerView] = useState<PlayerView>('goals');
   const { data, isLoading, error } = useTeam(id);
+  const { data: leagueData } = useLeague(data?.league.id);
   const favorites = useFavorites();
 
   if (isLoading) return <Loading />;
@@ -119,6 +120,14 @@ export function TeamPage() {
   const next = games.find((g) => g.status !== 'finished');
   const played = games.filter((g) => g.status === 'finished').reverse();
   const upcoming = games.filter((g) => g.status !== 'finished');
+  const units = leagueData ? unitRanks(leagueData.table, team.id) : null;
+  const unitTile = (label: string, row: UnitRow | null | undefined, noun: string) => (
+    <StatTile
+      label={label}
+      value={row?.perGame != null ? `${row.rank}.` : '–'}
+      hint={row?.perGame != null ? `${perGame(row.goals, row.played)} ${noun}/Spiel · von ${units!.teams}` : `${noun} pro Spiel`}
+    />
+  );
 
   return (
     <div>
@@ -137,10 +146,14 @@ export function TeamPage() {
       </div>
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile label="Platz" value={tableRow?.rank ?? '–'} hint={tableRow ? `${tableRow.pointsPlus}:${tableRow.pointsMinus} Punkte` : undefined} />
+        <StatTile
+          label="Platz"
+          value={tableRow ? `${tableRow.rank}.` : '–'}
+          hint={tableRow ? `${tableRow.pointsPlus}:${tableRow.pointsMinus} Pkt · Diff ${signed(tableRow.goalsFor - tableRow.goalsAgainst)}` : undefined}
+        />
+        {unitTile('Angriff', units?.attack, 'Tore')}
+        {unitTile('Abwehr', units?.defense, 'Gegentore')}
         <StatTile label="Bilanz" value={`${stats.won}-${stats.drawn}-${stats.lost}`} hint="Siege-Unentsch.-Niederl." />
-        <StatTile label="Tore Ø" value={perGame(stats.goalsFor, stats.played)} hint={`Gegentore Ø ${perGame(stats.goalsAgainst, stats.played)}`} />
-        <StatTile label="Tordifferenz" value={signed(stats.goalsFor - stats.goalsAgainst)} hint={`${stats.goalsFor}:${stats.goalsAgainst}`} />
       </div>
 
       {next && (
