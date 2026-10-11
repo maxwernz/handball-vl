@@ -37,6 +37,10 @@ without a license“). Die Pipeline ist deshalb bewusst sparsam:
 - Vorsaisons werden standardmäßig nicht nachgeladen (`PAST_SEASONS=0`),
 - der Workflow läuft an Spieltagen alle 30 Minuten, sonst selten.
 
+Die Live-Funktionen (Spielstand, Ticker, Live-Konferenz) fragen nur aus dem Browser des Nutzers und nur für Spiele,
+die gerade angezeigt werden. Die Konferenz liest die Ticker nacheinander und umso seltener, je mehr Spiele laufen
+(höchstens etwa eine Anfrage alle 4 Sekunden); nach einem Fehler wird nicht nachgehakt.
+
 ## Einrichtung auf GitHub
 
 1. Repository (öffentlich) auf GitHub anlegen und diesen Code nach `main` pushen.

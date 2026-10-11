@@ -1,20 +1,11 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useEffect } from 'react';
-import { BASE, useGames, useIndex, useMeta, useSeasonId } from '../api.ts';
+import { BASE, useIndex, useLiveGames, useMeta, useSeasonId } from '../api.ts';
 import { useFavoriteLeagues } from '../lib/favorites.ts';
 import { leagueLabel } from '../lib/format.ts';
 import { useSeason } from '../lib/season.tsx';
 import { storage } from '../lib/storage.ts';
 import { LiveBadge } from './ui.tsx';
-
-function useLiveCount() {
-  // Rounded to 5 minutes so the query key (and cache entry) stays stable between renders.
-  const now = Math.floor(Date.now() / 300_000) * 300_000;
-  const from = new Date(now - 4 * 3600_000).toISOString();
-  const to = new Date(now + 3600_000).toISOString();
-  const { data } = useGames(from, to);
-  return data?.filter((g) => g.status === 'live').length ?? 0;
-}
 
 function SeasonSelect() {
   const { data: index } = useIndex();
@@ -46,7 +37,7 @@ function SeasonSelect() {
 export function Layout() {
   const { data: meta } = useMeta();
   const { data: index } = useIndex();
-  const live = useLiveCount();
+  const live = useLiveGames().filter((g) => g.status === 'live').length;
   const location = useLocation();
   const favoriteLeagues = useFavoriteLeagues();
   // Favorite leagues first; the sort is stable, so the rest keep their order.
@@ -70,7 +61,7 @@ export function Layout() {
             <span>Handball VL</span>
           </NavLink>
           {live > 0 && (
-            <NavLink to="/" aria-label={`${live} Spiele live`}>
+            <NavLink to="/live" aria-label={`${live} Spiele live – zur Konferenz`}>
               <LiveBadge />
             </NavLink>
           )}

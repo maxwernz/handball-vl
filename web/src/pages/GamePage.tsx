@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import type { GameDetail, MatchEvent, PlayerLine, Report, TeamDetail, TeamSheet } from '../../../shared/types.ts';
 import { useGame, useLeague, useTeam } from '../api.ts';
 import { CompareBar, ScoreFlowChart } from '../components/charts.tsx';
 import { GameList } from '../components/GameRow.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
-import { Empty, ErrorBox, FormBadges, LiveBadge, Loading, Section, Tabs } from '../components/ui.tsx';
+import { Empty, ErrorBox, FormBadges, LiveBadge, Loading, Section, Tabs, useChanges } from '../components/ui.tsx';
 import { formatLongDay, formatTime } from '../lib/format.ts';
-import { useLiveTicker, type LiveGame } from '../lib/liveTicker.ts';
+import { activePenalties, liveScore, useLiveTicker, type LiveGame } from '../lib/liveTicker.ts';
 import { matchStats } from '../lib/matchStats.ts';
 import { unitTable, type Unit, type UnitRow } from '../lib/standings.ts';
 import { playerKey } from '../../../shared/players.ts';
@@ -17,8 +17,18 @@ type Tab = 'summary' | 'ticker' | 'lineups' | 'stats' | 'compare';
 function Scoreboard({ data, ticker }: { data: GameDetail; ticker: LiveGame | undefined }) {
   const { league } = data;
   // The ticker is ahead of the league data, which h4a refreshes less often.
-  const ahead = ticker && data.game.status === 'live' && ticker.homeGoals + ticker.guestGoals >= (data.game.homeGoals ?? 0) + (data.game.guestGoals ?? 0);
-  const game = ahead ? { ...data.game, homeGoals: ticker.homeGoals, guestGoals: ticker.guestGoals } : data.game;
+  const ahead = liveScore(data.game, ticker);
+  const game = ahead ? { ...data.game, ...ahead } : data.game;
+  const goals = useChanges(`${game.homeGoals}:${game.guestGoals}`);
+  const penalties = (side: 'home' | 'guest') =>
+    ahead && ticker
+      ? activePenalties(ticker, side).map((p) => (
+          <span key={`${p.player}-${p.until}`} className="rounded bg-(--color-surface-2) px-1.5 py-0.5 text-[11px] whitespace-nowrap" title="Zeitstrafe">
+            <strong>2'</strong> {p.player} <span className="text-(--color-ink-3)">bis {p.until}</span>
+          </span>
+        ))
+      : [];
+  const shortHanded = { home: penalties('home'), guest: penalties('guest') };
   const played = game.status !== 'scheduled';
   const team = (id: number | null, name: string, full: string | undefined) => {
     const content = (
@@ -47,7 +57,7 @@ function Scoreboard({ data, ticker }: { data: GameDetail; ticker: LiveGame | und
         {team(game.homeId, game.home, data.report?.home.name)}
         <div className="flex w-28 shrink-0 flex-col items-center pt-3 sm:w-36">
           {game.status === 'live' && <LiveBadge />}
-          <div className={`tabular mt-1 text-4xl font-extrabold sm:text-5xl ${game.status === 'live' ? 'text-(--color-live)' : ''}`}>
+          <div key={goals} className={`tabular mt-1 text-4xl font-extrabold sm:text-5xl ${game.status === 'live' ? 'text-(--color-live)' : ''} ${goals && game.status === 'live' ? 'goal-flash' : ''}`}>
             {played ? `${game.homeGoals ?? 0}:${game.guestGoals ?? 0}` : formatTime(game.date)}
           </div>
           {game.status === 'finished' && game.homeGoalsHt !== null && (
@@ -55,11 +65,17 @@ function Scoreboard({ data, ticker }: { data: GameDetail; ticker: LiveGame | und
               Halbzeit {game.homeGoalsHt}:{game.guestGoalsHt}
             </div>
           )}
-          {ahead && <div className="text-sm text-(--color-ink-2)">{ticker.phase}</div>}
+          {ahead && <div className="text-sm text-(--color-ink-2)">{ahead.phase}</div>}
           {game.status === 'scheduled' && <div className="text-sm text-(--color-ink-2)">Anwurf</div>}
         </div>
         {team(game.guestId, game.guest, data.report?.guest.name)}
       </div>
+      {(shortHanded.home.length > 0 || shortHanded.guest.length > 0) && (
+        <div className="grid grid-cols-2 gap-3 px-3 pb-3" aria-label="Laufende Zeitstrafen (Stand des letzten Ticker-Eintrags)">
+          <div className="flex flex-wrap content-start gap-1">{shortHanded.home}</div>
+          <div className="flex flex-wrap content-start justify-end gap-1">{shortHanded.guest}</div>
+        </div>
+      )}
       <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 border-t border-(--color-line) px-4 py-2.5 text-center text-xs text-(--color-ink-2)">
         <span>
           {formatLongDay(game.date)}, {formatTime(game.date)} Uhr
@@ -123,7 +139,10 @@ function describe(e: MatchEvent) {
 
 function Ticker({ events: all, home, guest, live }: { events: MatchEvent[]; home: string; guest: string; live?: boolean }) {
   const [newestFirst, setNewestFirst] = useState(Boolean(live));
-  const events = newestFirst ? [...all].reverse() : all;
+  // Entries that arrive while the ticker is open drop in; `i` is the chronological position.
+  const seen = useRef(all.length);
+  const indexed = all.map((e, i) => ({ e, i }));
+  const events = newestFirst ? indexed.reverse() : indexed;
   let halftimeShown = false;
   return (
     <div>
@@ -133,13 +152,13 @@ function Ticker({ events: all, home, guest, live }: { events: MatchEvent[]; home
         </button>
       </div>
       <ol className="card divide-y divide-(--color-line) overflow-hidden">
-        {events.map((e, i) => {
+        {events.map(({ e, i }) => {
           const look = EVENT_LOOK[e.type];
           const isGoal = e.type === 'goal' || e.type === 'sevenGoal';
           const showHalf = !newestFirst && !halftimeShown && e.t > 1800;
           if (showHalf) halftimeShown = true;
           return (
-            <li key={i}>
+            <li key={i} className={live && i >= seen.current ? 'ticker-in' : ''}>
               {showHalf && (
                 <div className="bg-(--color-surface-2) py-1.5 text-center text-xs font-semibold text-(--color-ink-2)">Halbzeit</div>
               )}

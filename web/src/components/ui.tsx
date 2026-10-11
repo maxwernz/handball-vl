@@ -1,5 +1,17 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
+
+/** Counts how often a value changed since mount; use as `key` to replay an animation on change. */
+export function useChanges(value: string) {
+  const previous = useRef(value);
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (previous.current === value) return;
+    previous.current = value;
+    setCount((c) => c + 1);
+  }, [value]);
+  return count;
+}
 
 export function LiveBadge({ small }: { small?: boolean }) {
   return (

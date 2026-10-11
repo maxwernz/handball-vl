@@ -1,8 +1,8 @@
 import { Link } from 'react-router';
-import type { League, TableRow } from '../../../shared/types.ts';
+import type { League } from '../../../shared/types.ts';
 import { useFavorites } from '../lib/favorites.ts';
 import { signed } from '../lib/format.ts';
-import { formOf } from '../lib/standings.ts';
+import { formOf, type LiveRow } from '../lib/standings.ts';
 import { TeamLogo } from './TeamLogo.tsx';
 import { FormBadges } from './ui.tsx';
 
@@ -13,7 +13,7 @@ export function StandingsTable({
   highlight,
 }: {
   league: League;
-  rows: TableRow[];
+  rows: LiveRow[];
   compact?: boolean;
   highlight?: number;
 }) {
@@ -23,7 +23,7 @@ export function StandingsTable({
       <table className="tabular w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-(--color-line) text-xs text-(--color-ink-3)">
-            <th className="w-8 py-2 pl-3 text-left font-medium">#</th>
+            <th className="w-9 py-2 pl-3 text-left font-medium">#</th>
             <th className="py-2 text-left font-medium">Mannschaft</th>
             <th className="px-1.5 py-2 text-center font-medium" title="Spiele">Sp</th>
             {!compact && (
@@ -48,11 +48,19 @@ export function StandingsTable({
                 key={r.teamId}
                 className={`border-b border-(--color-line) last:border-0 ${marked ? 'bg-(--color-brand)/10' : ''}`}
               >
-                <td className="py-2 pl-3 font-semibold text-(--color-ink-2)">{r.rank}</td>
+                <td className="py-2 pl-3 font-semibold whitespace-nowrap text-(--color-ink-2)">
+                  {r.rank}
+                  {r.move ? (
+                    <span className={`ml-0.5 text-[10px] ${r.move > 0 ? 'text-(--color-win)' : 'text-(--color-loss)'}`} title={`${Math.abs(r.move)} ${Math.abs(r.move) === 1 ? 'Platz' : 'Plätze'} ${r.move > 0 ? 'gewonnen' : 'verloren'}`}>
+                      {r.move > 0 ? '▲' : '▼'}
+                    </span>
+                  ) : null}
+                </td>
                 <td className="max-w-0 py-2">
                   <Link to={`/team/${r.teamId}`} className="flex min-w-0 items-center gap-2 hover:underline">
                     <TeamLogo teamId={r.teamId} name={r.team} size={22} />
                     <span className={`truncate ${marked ? 'font-semibold' : ''}`}>{r.team}</span>
+                    {r.live && <span className="live-dot h-2 w-2 shrink-0 rounded-full bg-(--color-live)" title="Spielt gerade" />}
                   </Link>
                 </td>
                 <td className="px-1.5 py-2 text-center">{r.played}</td>

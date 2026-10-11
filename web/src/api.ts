@@ -2,6 +2,7 @@
 // under api/; while a game is running, scores and tables are additionally taken
 // straight from h4a, so live results don't wait for the next pipeline run.
 
+import { useMemo } from 'react';
 import { keepPreviousData, useQuery, type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { gameStatus, isActive, leagueUrl, normalizeTable, rawGames, scoreFields, type LeagueResponse } from '../../shared/h4a.ts';
 import type {
@@ -153,6 +154,14 @@ export function useGames(from?: string, to?: string) {
     enabled: season !== undefined,
     refetchInterval: (q) => pollInterval(q.state.data),
   });
+}
+
+/** Games that are running or about to start. */
+export function useLiveGames(): Game[] {
+  // Rounded to 5 minutes so the query key (and cache entry) stays stable between renders.
+  const now = Math.floor(Date.now() / 300_000) * 300_000;
+  const { data } = useGames(new Date(now - 4 * 3600_000).toISOString(), new Date(now + 3600_000).toISOString());
+  return useMemo(() => data?.filter((g) => isActive(g)) ?? [], [data]);
 }
 
 export function useGame(id: number) {

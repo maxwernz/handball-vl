@@ -4,8 +4,8 @@ export type TableView = 'all' | 'home' | 'away';
 
 /** Recomputes the table for home or away games only. The official ranking
  *  (which h4a computes with head-to-head rules) is used for the full table. */
-export function tableFor(league: League, view: TableView): TableRow[] {
-  if (view === 'all') return league.table;
+export function tableFor(league: League, view: TableView): LiveRow[] {
+  if (view === 'all') return liveTable(league);
   const rows = new Map<number, TableRow>(
     league.table.map((r) => [
       r.teamId,
@@ -27,6 +27,62 @@ export function tableFor(league: League, view: TableView): TableRow[] {
     else (row.drawn++, row.pointsPlus++, row.pointsMinus++);
   }
   return ranked([...rows.values()]);
+}
+
+export interface LiveRow extends TableRow {
+  /** The team is playing right now and its row counts the current score. */
+  live?: boolean;
+  /** Places gained (positive) or lost through the running games. */
+  move?: number;
+}
+
+function addResult(row: TableRow, own: number, other: number, sign: 1 | -1) {
+  row.played += sign;
+  row.goalsFor += sign * own;
+  row.goalsAgainst += sign * other;
+  if (own > other) ((row.won += sign), (row.pointsPlus += 2 * sign));
+  else if (own < other) ((row.lost += sign), (row.pointsMinus += 2 * sign));
+  else ((row.drawn += sign), (row.pointsPlus += sign), (row.pointsMinus += sign));
+}
+
+/**
+ * The table as it would stand if the running games ended now. Teams not playing
+ * keep the official order among themselves (h4a ranks with head-to-head rules).
+ */
+export function liveTable(league: League): LiveRow[] {
+  const running = league.games.filter((g) => g.status === 'live' && g.homeGoals !== null && g.guestGoals !== null);
+  if (!running.length) return league.table;
+  const finished = new Map<number, number>();
+  for (const g of league.games) {
+    if (g.status !== 'finished') continue;
+    for (const id of [g.homeId, g.guestId]) if (id !== null) finished.set(id, (finished.get(id) ?? 0) + 1);
+  }
+  const before = new Map(league.table.map((r) => [r.teamId, { ...r }]));
+  const after = new Map<number, LiveRow>(league.table.map((r) => [r.teamId, { ...r }]));
+  let official = true;
+  for (const g of running) {
+    for (const [teamId, own, other] of [[g.homeId, g.homeGoals!, g.guestGoals!], [g.guestId, g.guestGoals!, g.homeGoals!]] as const) {
+      const row = teamId !== null ? after.get(teamId) : undefined;
+      if (!row) continue;
+      row.live = true;
+      // h4a's table may already count the running game; then take it out of the "before" side instead.
+      if (row.played > (finished.get(teamId!) ?? 0)) {
+        addResult(before.get(teamId!)!, own, other, -1);
+        official = false;
+      } else addResult(row, own, other, 1);
+    }
+  }
+  const playing = new Set([...after.values()].filter((r) => r.live).map((r) => r.teamId));
+  const order = (rows: TableRow[]) =>
+    [...rows].sort(
+      (a, b) =>
+        b.pointsPlus - a.pointsPlus ||
+        a.pointsMinus - b.pointsMinus ||
+        (playing.has(a.teamId) || playing.has(b.teamId) ? b.goalsFor - b.goalsAgainst - (a.goalsFor - a.goalsAgainst) || b.goalsFor - a.goalsFor : 0) ||
+        a.rank - b.rank,
+    );
+  const rankBefore = new Map(official ? league.table.map((r) => [r.teamId, r.rank]) : order([...before.values()]).map((r, i) => [r.teamId, i + 1]));
+  return order([...after.values()]).map((r, i) => ({ ...r, rank: i + 1, move: rankBefore.get(r.teamId)! - (i + 1) }));
 }
 
 function ranked(rows: TableRow[]): TableRow[] {

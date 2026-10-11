@@ -47,6 +47,12 @@ function TableTab({ league }: { league: League }) {
           {kind === 'attack' ? 'Erzielte Tore' : 'Kassierte Tore'} pro Spiel – so zählen Nachholspiele nicht als Nachteil.
         </p>
       )}
+      {view === 'all' && rows.some((r) => r.live) && (
+        <p className="mt-2 px-1 text-xs text-(--color-ink-3)">
+          <span className="live-dot mr-1 inline-block h-2 w-2 rounded-full bg-(--color-live)" />
+          Blitztabelle: laufende Spiele zählen mit dem aktuellen Spielstand.
+        </p>
+      )}
       {kind === 'table' && view === 'all' && league.tableNotes.map((n) => <p key={n} className="mt-2 px-1 text-xs text-(--color-ink-3)">{n}</p>)}
       <p className="mt-1 px-1 text-xs text-(--color-ink-3)">Stand laut h4a: {league.sourceUpdated}</p>
     </>

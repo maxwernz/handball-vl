@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { Game, League, LeagueRef, Meta } from '../../../shared/types.ts';
-import { useGames, useLeague, useMeta, useTopScorers } from '../api.ts';
+import { useGames, useLeague, useLiveGames, useMeta, useTopScorers } from '../api.ts';
 import { GameList } from '../components/GameRow.tsx';
 import { StandingsTable } from '../components/StandingsTable.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
-import { Chips, Empty, ErrorBox, FormBadges, Loading, Section, TextLink } from '../components/ui.tsx';
+import { Chips, Empty, ErrorBox, FormBadges, LiveBadge, Loading, Section, TextLink } from '../components/ui.tsx';
 import {
   setFavorites,
   shareLink,
@@ -16,7 +16,7 @@ import {
   useFavoriteTeamIds,
 } from '../lib/favorites.ts';
 import { formatDay, formatTime, isoDay, leagueLabel, relativeDay } from '../lib/format.ts';
-import { formOf } from '../lib/standings.ts';
+import { formOf, tableFor } from '../lib/standings.ts';
 import { storage } from '../lib/storage.ts';
 
 function mondayOf(offsetWeeks: number) {
@@ -238,6 +238,7 @@ function FavoriteCards({ league: ref, favorites }: { league: LeagueRef; favorite
 function LeagueOverview({ league: ref, full }: { league: LeagueRef; full: boolean }) {
   const { data: league } = useLeague(ref.id);
   if (!league) return <div className="card h-64 animate-pulse" />;
+  const table = tableFor(league, 'all');
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between px-1">
@@ -246,7 +247,7 @@ function LeagueOverview({ league: ref, full }: { league: LeagueRef; full: boolea
         </Link>
         <TextLink to={`/liga/${league.id}`}>{full ? 'Details →' : 'Tabelle →'}</TextLink>
       </div>
-      <StandingsTable league={league} rows={full ? league.table : league.table.slice(0, 5)} compact />
+      <StandingsTable league={league} rows={full ? table : table.slice(0, 5)} compact />
     </div>
   );
 }
@@ -357,6 +358,7 @@ export function HomePage() {
   const favorites = useFavorites();
   const favoriteLeagues = useFavoriteLeagues();
   const favoriteIds = useFavoriteTeamIds();
+  const live = useLiveGames().filter((g) => g.status === 'live').length;
   // Decided once, so the setup stays open while favorites are being picked.
   const [editing, setEditing] = useState(() => storage.get('setupDone') !== '1' && !favorites.length && !favoriteLeagues.length);
 
@@ -383,6 +385,15 @@ export function HomePage() {
   return (
     <div>
       <ImportBanner onImported={() => setEditing(false)} />
+      {live > 0 && (
+        <Link to="/live" className="card mb-4 flex items-center gap-3 border-(--color-live)/40 px-4 py-3 text-sm transition hover:border-(--color-live)">
+          <LiveBadge />
+          <span className="flex-1 font-medium">
+            {live} {live === 1 ? 'Spiel läuft' : 'Spiele laufen'} – zur Live-Konferenz
+          </span>
+          <span className="text-(--color-ink-3)">→</span>
+        </Link>
+      )}
       {showSetup && (
         <FavoritesSetup
           meta={meta}

@@ -92,3 +92,23 @@ body {
 .live-dot {
   animation: pulse-dot 1.4s ease-in-out infinite;
 }
+
+/* A goal just fell: the score pops, the new ticker entry drops in. */
+@keyframes goal-flash {
+  0% { transform: scale(1.35); color: var(--color-live); }
+  60% { color: var(--color-live); }
+  100% { transform: scale(1); }
+}
+.goal-flash {
+  animation: goal-flash 1.4s ease-out;
+}
+@keyframes ticker-in {
+  from { opacity: 0; transform: translateY(-10px); background: color-mix(in srgb, var(--color-live) 20%, transparent); }
+  to { opacity: 1; transform: none; background: transparent; }
+}
+.ticker-in {
+  animation: ticker-in 1.2s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .goal-flash, .ticker-in { animation: none; }
+}
