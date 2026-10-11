@@ -260,6 +260,8 @@ export interface Meta {
   leagues: LeagueRef[];
   /** Logo file per team id, relative to `api/logos/`; teams without a logo are missing. */
   logos: Record<number, string>;
+  /** Club color per team id (hex), taken from the logo; missing for black-and-white logos. */
+  colors?: Record<number, string>;
   /** All teams of the season, so favorites (stored by name) can be resolved to ids anywhere. */
   teams: { id: number; name: string; leagueId: number }[];
   /** Whether match reports of this season are still being downloaded. */

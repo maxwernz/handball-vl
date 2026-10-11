@@ -1,14 +1,17 @@
 import { useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import type { GameDetail, MatchEvent, PlayerLine, Report, TeamDetail, TeamSheet } from '../../../shared/types.ts';
-import { useGame, useLeague, useTeam } from '../api.ts';
+import { BASE, useGame, useLeague, useMeta, useTeam } from '../api.ts';
 import { CompareBar, ScoreFlowChart } from '../components/charts.tsx';
 import { GameList } from '../components/GameRow.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Empty, ErrorBox, FormBadges, LiveBadge, Loading, Section, Tabs, useChanges } from '../components/ui.tsx';
+import { colorStyle, useTeamColors } from '../lib/colors.ts';
 import { formatLongDay, formatTime } from '../lib/format.ts';
 import { activePenalties, liveScore, useLiveTicker, type LiveGame } from '../lib/liveTicker.ts';
 import { matchStats } from '../lib/matchStats.ts';
+import { shareGameImage } from '../lib/shareImage.ts';
+import { useTabSwipe } from '../lib/swipe.ts';
 import { unitTable, type Unit, type UnitRow } from '../lib/standings.ts';
 import { playerKey } from '../../../shared/players.ts';
 
@@ -369,12 +372,17 @@ function Comparison({ homeId, guestId }: { homeId: number; guestId: number }) {
 export function GamePage() {
   const id = Number(useParams().id);
   const { data, isLoading, error } = useGame(id);
-  const [params, setParams] = useSearchParams();
-  // Until the match report is in, ticker, lineups and stats come from h4a's live ticker.
-  const ticker = useLiveTicker(data && !data.report ? data.game.tickerToken : null, data?.game.status === 'live');
   if (isLoading) return <Loading />;
   if (error || !data) return <ErrorBox error={error} />;
+  return <GameView data={data} />;
+}
 
+function GameView({ data }: { data: GameDetail }) {
+  const [params, setParams] = useSearchParams();
+  // Until the match report is in, ticker, lineups and stats come from h4a's live ticker.
+  const ticker = useLiveTicker(data.report ? null : data.game.tickerToken, data.game.status === 'live');
+  const colors = useTeamColors(data.game.homeId, data.game.guestId);
+  const { data: meta } = useMeta();
   const { report, summary, game } = data;
   const compare = game.homeId !== null && game.guestId !== null ? [{ id: 'compare' as const, label: 'Vergleich' }] : [];
   const tabs: { id: Tab; label: string }[] = [
@@ -394,42 +402,57 @@ export function GamePage() {
   ];
   // The tab from the link, unless this game doesn't have it (yet).
   const active = tabs.find((t) => t.id === params.get('tab'))?.id ?? tabs[0]?.id;
+  const setTab = (t: Tab) => setParams(t === tabs[0].id ? {} : { tab: t }, { replace: true });
+  const swipe = useTabSwipe(tabs.map((t) => t.id), active, setTab);
+  const logo = (id: number | null) => (id !== null && meta?.logos[id] ? `${BASE}api/logos/${meta.logos[id]}` : null);
+  const share = () =>
+    shareGameImage({
+      game: { ...game, ...liveScore(game, ticker) },
+      league: data.league.name,
+      home: report?.home.name ?? game.home,
+      guest: report?.guest.name ?? game.guest,
+      logos: { home: logo(game.homeId), guest: logo(game.guestId) },
+      colors,
+      report: report ?? ticker ?? null,
+    });
 
   return (
-    <div>
+    <div style={colorStyle(colors)}>
       <Scoreboard data={data} ticker={report ? undefined : ticker} />
-      {tabs.length > 0 && <Tabs tabs={tabs} value={active!} onChange={(t) => setParams(t === tabs[0].id ? {} : { tab: t }, { replace: true })} />}
+      {tabs.length > 0 && <Tabs tabs={tabs} value={active!} onChange={setTab} />}
 
-      {active === 'summary' && summary && (
-        <article className="card p-4 sm:p-6">
-          <h2 className="mb-3 text-lg leading-snug font-bold">{summary.title}</h2>
-          <div className="summary text-[15px]" dangerouslySetInnerHTML={{ __html: summary.html }} />
-          <p className="mt-2 text-xs text-(--color-ink-3)">Automatisch erstellter Spielbericht (handball4all).</p>
-        </article>
-      )}
-      {active === 'ticker' && report && <Ticker events={report.events} home={data.game.home} guest={data.game.guest} />}
-      {active === 'ticker' && !report && ticker && (
-        <Ticker key="live" events={ticker.events} home={data.game.home} guest={data.game.guest} live />
-      )}
-      {active === 'lineups' && report && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Lineup sheet={report.home} teamId={data.game.homeId} side="home" />
-          <Lineup sheet={report.guest} teamId={data.game.guestId} side="guest" />
-        </div>
-      )}
-      {active === 'lineups' && !report && ticker && (
-        // No player links: someone in their first game has no player page yet.
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Lineup sheet={ticker.home} teamId={null} side="home" />
-          <Lineup sheet={ticker.guest} teamId={null} side="guest" />
-        </div>
-      )}
-      {active === 'stats' && (report ?? ticker) && <MatchStatsView report={(report ?? ticker)!} data={data} />}
-      {active === 'compare' && game.homeId !== null && game.guestId !== null && <Comparison homeId={game.homeId} guestId={game.guestId} />}
+      <div {...swipe}>
+        {active === 'summary' && summary && (
+          <article className="card p-4 sm:p-6">
+            <h2 className="mb-3 text-lg leading-snug font-bold">{summary.title}</h2>
+            <div className="summary text-[15px]" dangerouslySetInnerHTML={{ __html: summary.html }} />
+            <p className="mt-2 text-xs text-(--color-ink-3)">Automatisch erstellter Spielbericht (handball4all).</p>
+          </article>
+        )}
+        {active === 'ticker' && report && <Ticker events={report.events} home={data.game.home} guest={data.game.guest} />}
+        {active === 'ticker' && !report && ticker && (
+          <Ticker key="live" events={ticker.events} home={data.game.home} guest={data.game.guest} live />
+        )}
+        {active === 'lineups' && report && (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Lineup sheet={report.home} teamId={data.game.homeId} side="home" />
+            <Lineup sheet={report.guest} teamId={data.game.guestId} side="guest" />
+          </div>
+        )}
+        {active === 'lineups' && !report && ticker && (
+          // No player links: someone in their first game has no player page yet.
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Lineup sheet={ticker.home} teamId={null} side="home" />
+            <Lineup sheet={ticker.guest} teamId={null} side="guest" />
+          </div>
+        )}
+        {active === 'stats' && (report ?? ticker) && <MatchStatsView report={(report ?? ticker)!} data={data} />}
+        {active === 'compare' && game.homeId !== null && game.guestId !== null && <Comparison homeId={game.homeId} guestId={game.guestId} />}
 
-      {data.game.status === 'finished' && !report && (
-        <Empty>Der Spielbericht ist noch nicht verfügbar – er wird automatisch geladen, sobald h4a ihn veröffentlicht.</Empty>
-      )}
+        {data.game.status === 'finished' && !report && (
+          <Empty>Der Spielbericht ist noch nicht verfügbar – er wird automatisch geladen, sobald h4a ihn veröffentlicht.</Empty>
+        )}
+      </div>
 
       {data.previous.length > 0 && (
         <div className="mt-6">
@@ -439,13 +462,18 @@ export function GamePage() {
         </div>
       )}
 
-      {data.reportUrl && (
-        <div className="mt-4 text-center">
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+        {game.status !== 'scheduled' && (
+          <button onClick={share} className="rounded-lg bg-(--color-brand) px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+            Ergebnis als Bild teilen
+          </button>
+        )}
+        {data.reportUrl && (
           <a href={data.reportUrl} target="_blank" rel="noreferrer" className="text-sm font-medium text-(--color-brand) hover:underline">
             Original-Spielbericht (PDF) öffnen ↗
           </a>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

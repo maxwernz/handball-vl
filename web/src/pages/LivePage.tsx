@@ -4,6 +4,7 @@ import type { Game, MatchEvent } from '../../../shared/types.ts';
 import { useLiveGames } from '../api.ts';
 import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Empty, LiveBadge, Section, TextLink, useChanges } from '../components/ui.tsx';
+import { colorStyle, useTeamColors } from '../lib/colors.ts';
 import { formatTime } from '../lib/format.ts';
 import { liveScore, useConference, type LiveGame } from '../lib/liveTicker.ts';
 
@@ -45,6 +46,32 @@ interface FeedItem {
   at: number;
 }
 
+function FeedRow({ game, event: e, fresh }: { game: Game; event: MatchEvent; fresh: boolean }) {
+  const colors = useTeamColors(game.homeId, game.guestId);
+  return (
+    <li className={fresh ? 'ticker-in' : ''} style={colorStyle(colors)}>
+      <Link to={`/spiel/${game.id}`} className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-(--color-surface-2)">
+        <span
+          className="h-9 w-1 shrink-0 rounded-full"
+          style={{ background: e.side === 'home' ? 'var(--color-home)' : e.side === 'guest' ? 'var(--color-guest)' : 'var(--color-line)' }}
+        />
+        <span className="tabular w-8 shrink-0 text-xs text-(--color-ink-3)">{Math.floor(e.t / 60) + 1}'</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium">
+            {e.type === 'disqualification' ? 'Rote Karte' : e.type === 'sevenGoal' ? '7m-Tor' : 'Tor'} {e.player}
+          </span>
+          <span className="block truncate text-xs text-(--color-ink-3)">
+            {game.home} – {game.guest}
+          </span>
+        </span>
+        <span className="tabular shrink-0 rounded-md bg-(--color-surface-2) px-2 py-0.5 text-xs font-bold">
+          {e.homeScore}:{e.guestScore}
+        </span>
+      </Link>
+    </li>
+  );
+}
+
 const FEED_TYPES: MatchEvent['type'][] = ['goal', 'sevenGoal', 'disqualification'];
 const FEED_LENGTH = 60;
 
@@ -67,27 +94,8 @@ function Feed({ games, tickers }: { games: Game[]; tickers: Map<number, LiveGame
   if (!items.length) return <Empty>Noch keine Tore – oder für die laufenden Spiele wird kein Ticker geführt.</Empty>;
   return (
     <ol className="card divide-y divide-(--color-line) overflow-hidden">
-      {items.map(({ key, game, event: e }) => (
-        <li key={key} className={initial.current?.has(key) ? '' : 'ticker-in'}>
-          <Link to={`/spiel/${game.id}`} className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-(--color-surface-2)">
-            <span
-              className="h-9 w-1 shrink-0 rounded-full"
-              style={{ background: e.side === 'home' ? 'var(--color-home)' : e.side === 'guest' ? 'var(--color-guest)' : 'var(--color-line)' }}
-            />
-            <span className="tabular w-8 shrink-0 text-xs text-(--color-ink-3)">{Math.floor(e.t / 60) + 1}'</span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-medium">
-                {e.type === 'disqualification' ? 'Rote Karte' : e.type === 'sevenGoal' ? '7m-Tor' : 'Tor'} {e.player}
-              </span>
-              <span className="block truncate text-xs text-(--color-ink-3)">
-                {game.home} – {game.guest}
-              </span>
-            </span>
-            <span className="tabular shrink-0 rounded-md bg-(--color-surface-2) px-2 py-0.5 text-xs font-bold">
-              {e.homeScore}:{e.guestScore}
-            </span>
-          </Link>
-        </li>
+      {items.map(({ key, game, event }) => (
+        <FeedRow key={key} game={game} event={event} fresh={!initial.current?.has(key)} />
       ))}
     </ol>
   );

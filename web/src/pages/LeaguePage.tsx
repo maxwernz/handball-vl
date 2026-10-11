@@ -14,6 +14,7 @@ import { toggleFavoriteLeague, useFavoriteLeagues, useFavorites } from '../lib/f
 import { formatDay, isoDay } from '../lib/format.ts';
 import { currentRound, rankHistory, tableFor, type TableView, type Unit } from '../lib/standings.ts';
 import { storage } from '../lib/storage.ts';
+import { useTabSwipe } from '../lib/swipe.ts';
 
 type Tab = 'table' | 'schedule' | 'history' | 'stats';
 
@@ -198,6 +199,8 @@ export function LeaguePage() {
   const id = Number(useParams().id);
   const [params, setParams] = useSearchParams();
   const tab = (params.get('tab') as Tab) ?? 'table';
+  const setTab = (t: Tab) => setParams(t === 'table' ? {} : { tab: t }, { replace: true });
+  const swipe = useTabSwipe<Tab>(['table', 'schedule', 'history', 'stats'], tab, setTab);
   const { data: league, isLoading, error } = useLeague(id);
   const favoriteLeagues = useFavoriteLeagues();
 
@@ -222,12 +225,14 @@ export function LeaguePage() {
           { id: 'stats', label: 'Statistik' },
         ]}
         value={tab}
-        onChange={(t) => setParams(t === 'table' ? {} : { tab: t }, { replace: true })}
+        onChange={setTab}
       />
-      {tab === 'table' && <TableTab league={league} />}
-      {tab === 'schedule' && <ScheduleTab key={league.id} league={league} />}
-      {tab === 'history' && <HistoryTab key={league.id} league={league} />}
-      {tab === 'stats' && <StatsTab league={league} />}
+      <div {...swipe}>
+        {tab === 'table' && <TableTab league={league} />}
+        {tab === 'schedule' && <ScheduleTab key={league.id} league={league} />}
+        {tab === 'history' && <HistoryTab key={league.id} league={league} />}
+        {tab === 'stats' && <StatsTab league={league} />}
+      </div>
     </div>
   );
 }

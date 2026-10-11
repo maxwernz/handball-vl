@@ -73,8 +73,14 @@ export function Layout() {
               Statistik
             </NavLink>
           </nav>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
             <SeasonSelect />
+            <NavLink to="/suche" aria-label="Suche" className="rounded-full p-2 text-white/80 hover:bg-white/10 hover:text-white">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round">
+                <circle cx="11" cy="11" r="6.5" />
+                <path d="m16 16 4.5 4.5" />
+              </svg>
+            </NavLink>
           </div>
         </div>
         {leagues.length > 0 && (

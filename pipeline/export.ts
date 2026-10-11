@@ -19,7 +19,7 @@ import type {
 } from '../shared/types.ts';
 import { config } from './config.ts';
 import { reportUrl } from './h4a.ts';
-import { logoFor } from './logos.ts';
+import { logoColor, logoFor } from './logos.ts';
 import { seasonData, summarizePlayer, type SeasonData } from './stats.ts';
 import { exists, filePath, read } from './store.ts';
 import { keys, type SeasonIndex } from './sync.ts';
@@ -85,9 +85,10 @@ function topScorers(data: SeasonData): Record<number, GameScorer> {
   return best;
 }
 
-/** Resolves logos for all teams and copies them next to the data; returns team id -> file name. */
-async function exportLogos(data: SeasonData): Promise<Record<number, string>> {
+/** Resolves logos for all teams and copies them next to the data; returns file name and club color by team id. */
+async function exportLogos(data: SeasonData) {
   const logos: Record<number, string> = {};
+  const colors: Record<number, string> = {};
   await fs.mkdir(path.join(config.outDir, 'logos'), { recursive: true });
   for (const team of data.leagues.flatMap((l) => l.teams)) {
     const file = await logoFor(team.name);
@@ -95,8 +96,10 @@ async function exportLogos(data: SeasonData): Promise<Record<number, string>> {
     const name = path.basename(file);
     await fs.copyFile(filePath(file), path.join(config.outDir, 'logos', name));
     logos[team.id] = name;
+    const color = await logoColor(file).catch(() => null);
+    if (color) colors[team.id] = color;
   }
-  return logos;
+  return { logos, colors };
 }
 
 async function exportSeason(season: number, current: boolean) {
@@ -107,7 +110,7 @@ async function exportSeason(season: number, current: boolean) {
   const meta: Meta = {
     season,
     leagues: refs.map(toRef),
-    logos: await exportLogos(data),
+    ...(await exportLogos(data)),
     teams: data.leagues.flatMap((l) => l.teams.map((t) => ({ id: t.id, name: t.name, leagueId: l.id }))),
     incomplete: !current && !(await exists(keys.complete(season))),
   };

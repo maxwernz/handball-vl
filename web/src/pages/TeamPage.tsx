@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
+import { useTabSwipe } from '../lib/swipe.ts';
 import type { TeamDetail } from '../../../shared/types.ts';
 import { useLeague, useTeam } from '../api.ts';
 import { PeriodBars, RankChart } from '../components/charts.tsx';
@@ -108,6 +109,8 @@ export function TeamPage() {
   const id = Number(useParams().id);
   const [params, setParams] = useSearchParams();
   const tab = (params.get('tab') as Tab) ?? 'games';
+  const setTab = (t: Tab) => setParams(t === 'games' ? {} : { tab: t }, { replace: true });
+  const swipe = useTabSwipe<Tab>(['games', 'squad', 'stats'], tab, setTab);
   const [playerView, setPlayerView] = useState<PlayerView>('goals');
   const { data, isLoading, error } = useTeam(id);
   const { data: leagueData } = useLeague(data?.league.id);
@@ -169,42 +172,44 @@ export function TeamPage() {
           { id: 'stats', label: 'Statistik' },
         ]}
         value={tab}
-        onChange={(t) => setParams(t === 'games' ? {} : { tab: t }, { replace: true })}
+        onChange={setTab}
       />
 
-      {tab === 'games' && (
-        <>
-          {played.length > 0 && (
-            <Section title="Ergebnisse">
-              <GameList games={played} perspective={team.id} />
-            </Section>
-          )}
-          {upcoming.length > 0 && (
-            <Section title="Kommende Spiele">
-              <GameList games={upcoming} perspective={team.id} />
-            </Section>
-          )}
-        </>
-      )}
-
-      {tab === 'squad' &&
-        (data.players.length ? (
+      <div {...swipe}>
+        {tab === 'games' && (
           <>
-            <Chips
-              options={PLAYER_VIEWS}
-              value={playerView}
-              onChange={setPlayerView}
-            />
-            <PlayerTable players={data.players} view={playerView} showTeam={false} limit={40} />
-            <p className="mt-2 px-1 text-xs text-(--color-ink-3)">
-              Aus {stats.reports} Spielberichten. Spieler ohne veröffentlichten Namen sind nicht aufgeführt.
-            </p>
+            {played.length > 0 && (
+              <Section title="Ergebnisse">
+                <GameList games={played} perspective={team.id} />
+              </Section>
+            )}
+            {upcoming.length > 0 && (
+              <Section title="Kommende Spiele">
+                <GameList games={upcoming} perspective={team.id} />
+              </Section>
+            )}
           </>
-        ) : (
-          <Empty>Noch keine Spielberichte – der Kader erscheint nach dem ersten Spiel.</Empty>
-        ))}
+        )}
 
-      {tab === 'stats' && <StatsTab data={data} />}
+        {tab === 'squad' &&
+          (data.players.length ? (
+            <>
+              <Chips
+                options={PLAYER_VIEWS}
+                value={playerView}
+                onChange={setPlayerView}
+              />
+              <PlayerTable players={data.players} view={playerView} showTeam={false} limit={40} />
+              <p className="mt-2 px-1 text-xs text-(--color-ink-3)">
+                Aus {stats.reports} Spielberichten. Spieler ohne veröffentlichten Namen sind nicht aufgeführt.
+              </p>
+            </>
+          ) : (
+            <Empty>Noch keine Spielberichte – der Kader erscheint nach dem ersten Spiel.</Empty>
+          ))}
+
+        {tab === 'stats' && <StatsTab data={data} />}
+      </div>
 
       <div className="mt-6 text-center">
         <TextLink to={`/liga/${league.id}`}>Zur Tabelle der {league.short}</TextLink>

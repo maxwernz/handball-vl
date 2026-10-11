@@ -13,6 +13,7 @@ import { GamePage } from './pages/GamePage.tsx';
 import { PlayerPage } from './pages/PlayerPage.tsx';
 import { StatsPage } from './pages/StatsPage.tsx';
 import { LivePage } from './pages/LivePage.tsx';
+import { SearchPage } from './pages/SearchPage.tsx';
 import { NotFound } from './pages/NotFound.tsx';
 
 registerSW({ immediate: true });
@@ -33,6 +34,7 @@ const router = createBrowserRouter(
       { path: '/spieler/:key', element: <PlayerPage /> },
       { path: '/statistik', element: <StatsPage /> },
       { path: '/live', element: <LivePage /> },
+      { path: '/suche', element: <SearchPage /> },
       { path: '*', element: <NotFound /> },
     ],
   },

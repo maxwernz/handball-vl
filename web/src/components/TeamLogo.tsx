@@ -3,7 +3,7 @@ import { BASE, useMeta } from '../api.ts';
 
 const TONES = ['#2a78d6', '#1baf7a', '#eb6834', '#4a3aa7', '#008300', '#e34948', '#c98500', '#d55181'];
 
-function initials(name: string) {
+export function initials(name: string) {
   const words = name
     .replace(/\s+\d+$/, '')
     .split(/[\s/-]+/)
@@ -12,7 +12,7 @@ function initials(name: string) {
   return letters.join('').toUpperCase();
 }
 
-function tone(name: string) {
+export function tone(name: string) {
   let hash = 0;
   for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
   return TONES[Math.abs(hash) % TONES.length];

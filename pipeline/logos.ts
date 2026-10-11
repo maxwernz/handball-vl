@@ -146,3 +146,56 @@ async function resolveLogo(key: string): Promise<string | null> {
   await write(INDEX_KEY, { ...latest, [key]: { file, club, checkedAt: new Date().toISOString() } });
   return file;
 }
+
+function toHsl(r: number, g: number, b: number): [number, number, number] {
+  const [x, y, z] = [r / 255, g / 255, b / 255];
+  const max = Math.max(x, y, z);
+  const min = Math.min(x, y, z);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (!d) return [0, 0, l];
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h = max === x ? ((y - z) / d + 6) % 6 : max === y ? (z - x) / d + 2 : (x - y) / d + 4;
+  return [h * 60, s, l];
+}
+
+function toHex(h: number, s: number, l: number) {
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const value = l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(value * 255).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+const HUE_BINS = 24;
+
+/**
+ * A club's signature color: the dominant saturated hue of its logo, brought to a
+ * lightness that reads on light and dark backgrounds. Null for black-and-white logos.
+ */
+export async function logoColor(file: string): Promise<string | null> {
+  const { data } = await sharp(filePath(file)).resize(48, 48, { fit: 'inside' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const bins = Array.from({ length: HUE_BINS }, () => ({ weight: 0, x: 0, y: 0, s: 0, l: 0 }));
+  let opaque = 0;
+  let colored = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 128) continue;
+    opaque++;
+    const [h, s, l] = toHsl(data[i], data[i + 1], data[i + 2]);
+    if (s < 0.35 || l < 0.15 || l > 0.85) continue;
+    colored++;
+    const bin = bins[Math.floor(h / (360 / HUE_BINS)) % HUE_BINS];
+    bin.weight += s;
+    bin.x += Math.cos((h * Math.PI) / 180) * s;
+    bin.y += Math.sin((h * Math.PI) / 180) * s;
+    bin.s += s * s;
+    bin.l += l * s;
+  }
+  if (!opaque || colored / opaque < 0.04) return null;
+  const best = bins.reduce((a, b) => (b.weight > a.weight ? b : a));
+  const hue = ((Math.atan2(best.y, best.x) * 180) / Math.PI + 360) % 360;
+  // Yellows only read on a light background when they are darker than the rest.
+  const lightest = hue > 40 && hue < 75 ? 0.42 : 0.5;
+  return toHex(hue, Math.max(0.55, best.s / best.weight), Math.min(lightest, Math.max(0.38, best.l / best.weight)));
+}
