@@ -240,7 +240,7 @@ export interface LeagueSummary {
   topPlayerGame: { key: string; name: string; teamId: number; team: string; goals: number; gameId: number; opponent: string } | null;
 }
 
-/** The best scorer of a game, for the highlights of a week. */
+/** One of the best scorers of a game, for the highlights of a week. */
 export interface GameScorer {
   key: string;
   name: string;
@@ -248,6 +248,9 @@ export interface GameScorer {
   team: string;
   goals: number;
 }
+
+/** How many scorers are kept per game: enough to pick a "team of the week" from any set of games. */
+export const SCORERS_PER_GAME = 7;
 
 export interface SiteIndex {
   seasons: Season[];

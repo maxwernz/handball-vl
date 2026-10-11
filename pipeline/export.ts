@@ -3,6 +3,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { SCORERS_PER_GAME } from '../shared/types.ts';
 import type {
   Game,
   GameDetail,
@@ -74,13 +75,17 @@ function stats(data: SeasonData, leagueId: number | null): StatsResponse {
   };
 }
 
-/** The best scorer of every game with a report, by game id. */
-function topScorers(data: SeasonData): Record<number, GameScorer> {
-  const best: Record<number, GameScorer> = {};
+/** The best scorers of every game with a report, by game id, best first. */
+function topScorers(data: SeasonData): Record<number, GameScorer[]> {
+  const best: Record<number, GameScorer[]> = {};
   for (const { key, name, teamId, team, log } of data.players.values()) {
     for (const { gameId, goals } of log) {
-      if (goals > (best[gameId]?.goals ?? 0)) best[gameId] = { key, name, teamId, team, goals };
+      if (goals > 0) (best[gameId] ??= []).push({ key, name, teamId, team, goals });
     }
+  }
+  for (const list of Object.values(best)) {
+    list.sort((a, b) => b.goals - a.goals || a.name.localeCompare(b.name, 'de'));
+    list.length = Math.min(list.length, SCORERS_PER_GAME);
   }
   return best;
 }

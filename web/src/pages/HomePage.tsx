@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import type { Game, League, LeagueRef, Meta } from '../../../shared/types.ts';
+import { SCORERS_PER_GAME, type Game, type League, type LeagueRef, type Meta } from '../../../shared/types.ts';
 import { useGames, useLeague, useLiveGames, useMeta, useTopScorers } from '../api.ts';
 import { GameList } from '../components/GameRow.tsx';
 import { StandingsTable } from '../components/StandingsTable.tsx';
@@ -16,6 +16,7 @@ import {
   useFavoriteTeamIds,
 } from '../lib/favorites.ts';
 import { formatDay, formatTime, isoDay, leagueLabel, relativeDay } from '../lib/format.ts';
+import { teamNotes } from '../lib/notes.ts';
 import { formOf, tableFor } from '../lib/standings.ts';
 import { storage } from '../lib/storage.ts';
 
@@ -38,10 +39,11 @@ function WeekHighlights({ games }: { games: Game[] }) {
   // Among equally close games the one with more goals was the bigger spectacle.
   const closest = best((g) => -diff(g) * 1000 + total(g));
   const mostGoals = best(total);
-  const top = finished
-    .map((g) => ({ game: g, scorer: scorers?.[g.id] }))
-    .filter((x) => x.scorer)
-    .reduce<{ game: Game; scorer: NonNullable<typeof scorers>[number] } | null>((a, b) => (!a || b.scorer!.goals > a.scorer.goals ? { game: b.game, scorer: b.scorer! } : a), null);
+  // Every game lists its best scorers, so the best of the week are among them.
+  const team = finished
+    .flatMap((game) => (scorers?.[game.id] ?? []).map((scorer) => ({ game, scorer })))
+    .sort((a, b) => b.scorer.goals - a.scorer.goals)
+    .slice(0, SCORERS_PER_GAME);
   const row = (label: string, value: string, g: Game) => (
     <div className="py-2 text-sm">
       <div className="text-xs text-(--color-ink-3)">
@@ -58,18 +60,23 @@ function WeekHighlights({ games }: { games: Game[] }) {
   return (
     <div className="card mt-4 divide-y divide-(--color-line) px-4 py-2">
       <h3 className="py-2 font-semibold">Höhepunkte der Woche</h3>
-      {top && (
+      {team.length > 0 && (
         <div className="py-2 text-sm">
-          <div className="text-xs text-(--color-ink-3)">Bester Torschütze · {top.scorer.goals} Tore</div>
-          <span className="flex min-w-0 items-center gap-2">
-            <TeamLogo teamId={top.scorer.teamId} name={top.scorer.team} size={20} />
-            <Link to={`/spieler/${top.scorer.key}`} className="truncate hover:underline">
-              {top.scorer.name}
-            </Link>
-            <Link to={`/spiel/${top.game.id}`} className="min-w-0 truncate text-(--color-ink-3) hover:underline">
-              {top.game.home} – {top.game.guest}
-            </Link>
-          </span>
+          <div className="mb-1 text-xs text-(--color-ink-3)">Team der Woche · die besten Torschützen</div>
+          <ol className="space-y-1.5">
+            {team.map(({ game, scorer }) => (
+              <li key={`${game.id}-${scorer.key}`} className="flex min-w-0 items-center gap-2">
+                <span className="tabular w-6 shrink-0 text-right font-bold">{scorer.goals}</span>
+                <TeamLogo teamId={scorer.teamId} name={scorer.team} size={20} />
+                <Link to={`/spieler/${scorer.key}`} className="truncate hover:underline">
+                  {scorer.name}
+                </Link>
+                <Link to={`/spiel/${game.id}`} className="ml-auto min-w-0 shrink truncate text-xs text-(--color-ink-3) hover:underline">
+                  gegen {game.homeId === scorer.teamId ? game.guest : game.home}
+                </Link>
+              </li>
+            ))}
+          </ol>
         </div>
       )}
       {row('Höchster Sieg', `${diff(biggest)} Tore Differenz`, biggest)}
@@ -214,8 +221,9 @@ function FavoriteCard({ league, team }: { league: League; team: string }) {
           )}
         </div>
       </div>
-      <div className="mt-3">
+      <div className="mt-3 flex items-center gap-3">
         <FormBadges form={formOf(league.games, t.id)} />
+        <span className="min-w-0 truncate text-xs text-(--color-ink-2)">{teamNotes(league.games, t.id)[0]}</span>
       </div>
     </Link>
   );

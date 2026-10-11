@@ -62,6 +62,7 @@ npm install
 npm run data       # Daten holen und nach web/public/api exportieren
 npm run dev        # App auf http://localhost:5173
 npm run typecheck
+npm test           # Parser (PDF-Spielbericht, Live-Ticker) und Auswertungen gegen gespeicherte Beispiele
 ```
 
 `npm run data:export` erzeugt die JSON-Dateien neu aus dem vorhandenen Datenstand in `data/`, ohne h4a zu fragen.

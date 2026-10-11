@@ -13,7 +13,7 @@ import type { Game, League, LeagueRef, Report, Season, Summary, Team } from '../
 import { config } from './config.ts';
 import { fetchLeague, fetchOrg, fetchReportPdf, fetchRobotext } from './h4a.ts';
 import { RateLimitedError } from './http.ts';
-import { parseReport } from './report.ts';
+import { checkReport, parseReport } from './report.ts';
 import { exists, read, write } from './store.ts';
 import { parseKickoff, weekStart } from './time.ts';
 
@@ -144,6 +144,9 @@ async function syncGameDetails(game: Game) {
       const pdf = await fetchReportPdf(game.reportId);
       if (pdf) {
         const report = await parseReport(pdf, game.id, game.reportId, { home: game.home, guest: game.guest });
+        // "::warning::" makes the line stand out in the summary of the GitHub Actions run.
+        const problems = checkReport(report, game);
+        if (problems.length) console.warn(`::warning::report of game ${game.id} (${game.home} – ${game.guest}) does not add up: ${problems.join('; ')}`);
         await write(keys.report(game.id), report);
       }
     }

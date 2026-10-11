@@ -14,6 +14,7 @@ import { PlayerPage } from './pages/PlayerPage.tsx';
 import { StatsPage } from './pages/StatsPage.tsx';
 import { LivePage } from './pages/LivePage.tsx';
 import { SearchPage } from './pages/SearchPage.tsx';
+import { ComparePage } from './pages/ComparePage.tsx';
 import { NotFound } from './pages/NotFound.tsx';
 
 registerSW({ immediate: true });
@@ -35,6 +36,7 @@ const router = createBrowserRouter(
       { path: '/statistik', element: <StatsPage /> },
       { path: '/live', element: <LivePage /> },
       { path: '/suche', element: <SearchPage /> },
+      { path: '/vergleich', element: <ComparePage /> },
       { path: '*', element: <NotFound /> },
     ],
   },

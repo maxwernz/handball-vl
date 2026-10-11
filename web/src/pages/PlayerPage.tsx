@@ -38,6 +38,9 @@ export function PlayerPage() {
             {p.team}
           </Link>
         </div>
+        <Link to={`/vergleich?a=${p.key}`} className="ml-auto shrink-0 rounded-lg border border-(--color-line) px-3 py-1.5 text-sm font-medium text-(--color-brand) hover:bg-(--color-surface-2)">
+          Vergleichen
+        </Link>
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">

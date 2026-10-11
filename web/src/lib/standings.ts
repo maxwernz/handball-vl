@@ -213,3 +213,38 @@ export function unitRanks(rows: TableRow[], teamId: number) {
   const find = (unit: Unit) => unitTable(rows, unit).find((r) => r.teamId === teamId) ?? null;
   return { attack: find('attack'), defense: find('defense'), teams: rows.length };
 }
+
+export interface Remaining {
+  games: number;
+  home: number;
+  away: number;
+  /** Average table place of the opponents still to come; null when the season is over. */
+  avgRank: number | null;
+  /** Opponents from the upper half of the table. */
+  topHalf: number;
+  /** 1 = hardest remaining schedule of the league. */
+  difficulty: number | null;
+}
+
+/** What each team still has ahead of it, judged by where the opponents stand now. */
+export function remainingSchedules(league: League): Map<number, Remaining> {
+  const rank = new Map(league.table.map((r) => [r.teamId, r.rank]));
+  const result = new Map<number, Remaining>(league.teams.map((t) => [t.id, { games: 0, home: 0, away: 0, avgRank: null, topHalf: 0, difficulty: null }]));
+  const sums = new Map<number, number>();
+  for (const g of league.games) {
+    if (g.status !== 'scheduled') continue;
+    for (const [own, other, home] of [[g.homeId, g.guestId, true], [g.guestId, g.homeId, false]] as const) {
+      const row = own !== null ? result.get(own) : undefined;
+      const place = other !== null ? rank.get(other) : undefined;
+      if (!row || place === undefined) continue;
+      row.games++;
+      row[home ? 'home' : 'away']++;
+      if (place <= league.table.length / 2) row.topHalf++;
+      sums.set(own!, (sums.get(own!) ?? 0) + place);
+    }
+  }
+  for (const [id, row] of result) if (row.games) row.avgRank = sums.get(id)! / row.games;
+  const open = [...result.values()].filter((r) => r.avgRank !== null).sort((a, b) => a.avgRank! - b.avgRank!);
+  open.forEach((row, i) => (row.difficulty = i > 0 && open[i - 1].avgRank === row.avgRank ? open[i - 1].difficulty : i + 1));
+  return result;
+}

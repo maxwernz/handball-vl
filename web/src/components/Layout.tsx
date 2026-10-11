@@ -34,11 +34,15 @@ function SeasonSelect() {
   );
 }
 
+const STALE_MS = 36 * 3600_000;
+
 export function Layout() {
   const { data: meta } = useMeta();
   const { data: index } = useIndex();
   const live = useLiveGames().filter((g) => g.status === 'live').length;
   const location = useLocation();
+  // The pipeline runs at least once every morning; a much older stand means it stopped.
+  const stale = index !== undefined && Date.now() - Date.parse(index.updatedAt) > STALE_MS;
   const favoriteLeagues = useFavoriteLeagues();
   // Favorite leagues first; the sort is stable, so the rest keep their order.
   const leagues = [...(meta?.leagues ?? [])].sort((a, b) => Number(favoriteLeagues.includes(b.short)) - Number(favoriteLeagues.includes(a.short)));
@@ -95,6 +99,12 @@ export function Layout() {
         )}
       </header>
 
+      {stale && (
+        <div className="bg-(--color-draw)/15 px-4 py-2 text-center text-sm">
+          Die Daten sind vom {new Date(index!.updatedAt).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} Uhr –
+          die automatische Aktualisierung hängt, oder du bist offline.
+        </div>
+      )}
       {meta?.incomplete && (
         <div className="bg-(--color-draw)/15 px-4 py-2 text-center text-sm">
           Für diese Saison sind noch nicht alle Spielberichte geladen – Statistiken sind unvollständig.

@@ -206,12 +206,16 @@ export function useStats(league: number | null) {
   });
 }
 
-/** Best scorer per game id, for all games of the season with a match report. */
+/** Best scorers per game id (best first), for all games of the season with a match report. */
 export function useTopScorers() {
   const season = useSeasonId();
   return useQuery({
     queryKey: ['scorers', season],
-    queryFn: () => get<Record<number, GameScorer>>(`s/${season}/scorers`),
+    queryFn: async () => {
+      const data = await get<Record<number, GameScorer | GameScorer[]>>(`s/${season}/scorers`);
+      // A copy cached offline may still hold a single scorer per game.
+      return Object.fromEntries(Object.entries(data).map(([id, v]) => [id, Array.isArray(v) ? v : [v]])) as Record<number, GameScorer[]>;
+    },
     enabled: season !== undefined,
     staleTime: POLL_MS,
   });
@@ -222,7 +226,7 @@ export function usePlayer(key: string) {
   return useQuery({
     queryKey: ['player', season, key],
     queryFn: () => get<PlayerDetail>(`s/${season}/player/${encodeURIComponent(key)}`),
-    enabled: season !== undefined,
+    enabled: season !== undefined && key !== '',
     staleTime: POLL_MS,
   });
 }

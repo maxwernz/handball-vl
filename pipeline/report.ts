@@ -237,6 +237,26 @@ export async function parseReport(
   return report;
 }
 
+/**
+ * Cross-checks a parsed report against the final score. A report that does not add
+ * up usually means h4a changed the layout of the PDF and the parser needs a look.
+ */
+export function checkReport(report: Report, final: { homeGoals: number | null; guestGoals: number | null }): string[] {
+  const problems: string[] = [];
+  const isGoal = (e: MatchEvent) => e.type === 'goal' || e.type === 'sevenGoal';
+  for (const side of ['home', 'guest'] as const) {
+    const expected = side === 'home' ? final.homeGoals : final.guestGoals;
+    if (expected === null) continue;
+    const sheet = report[side];
+    if (!sheet.name) problems.push(`${side}: team name missing`);
+    const listed = [...sheet.players, ...sheet.officials].reduce((n, p) => n + p.goals, 0);
+    if (listed !== expected) problems.push(`${side}: players scored ${listed}, result says ${expected}`);
+    const ticked = report.events.filter((e) => isGoal(e) && e.side === side).length;
+    if (ticked !== expected) problems.push(`${side}: play-by-play has ${ticked} goals, result says ${expected}`);
+  }
+  return problems;
+}
+
 function resolveSide(
   report: Report,
   parsed: ReturnType<typeof parseAction>,

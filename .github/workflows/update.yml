@@ -44,6 +44,9 @@ jobs:
 
       - run: npm ci
 
+      # Bricht ab, bevor ein kaputter Parser falsche Zahlen veröffentlicht.
+      - run: npm test
+
       - name: Daten von h4a synchronisieren
         run: node pipeline/run.ts
         env:

@@ -1,20 +1,11 @@
-import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useMeta, useStats } from '../api.ts';
 import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Empty, Section } from '../components/ui.tsx';
 import { leagueLabel } from '../lib/format.ts';
+import { matcher } from '../lib/search.ts';
 
 const MAX_RESULTS = 30;
-
-/** Lower case without accents, so "muller" finds "Müller". */
-function fold(text: string) {
-  return text
-    .toLowerCase()
-    .replace(/ß/g, 'ss')
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '');
-}
 
 /** Teams and players by name. */
 export function SearchPage() {
@@ -22,14 +13,10 @@ export function SearchPage() {
   const query = params.get('q') ?? '';
   const { data: meta } = useMeta();
   const { data: stats } = useStats(null);
-  const words = useMemo(() => fold(query).split(/\s+/).filter(Boolean), [query]);
-  const matches = (text: string) => {
-    const folded = fold(text);
-    return words.every((w) => folded.includes(w));
-  };
+  const matches = matcher(query);
   const league = (id: number) => leagueLabel(meta?.leagues.find((l) => l.id === id)?.short ?? '');
-  const teams = words.length ? (meta?.teams ?? []).filter((t) => matches(t.name)) : [];
-  const players = words.length ? (stats?.players ?? []).filter((p) => matches(p.name)).sort((a, b) => b.goals - a.goals) : [];
+  const teams = matches ? (meta?.teams ?? []).filter((t) => matches(t.name)) : [];
+  const players = matches ? (stats?.players ?? []).filter((p) => matches(p.name)).sort((a, b) => b.goals - a.goals) : [];
   const row = 'flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-(--color-surface-2)';
 
   return (
@@ -43,7 +30,7 @@ export function SearchPage() {
         aria-label="Team oder Spieler suchen"
         className="mb-4 w-full rounded-xl border border-(--color-line) bg-(--color-surface) px-4 py-3 text-base outline-none focus:border-(--color-brand)"
       />
-      {!words.length ? (
+      {!matches ? (
         <Empty>Gib einen Namen ein – gesucht wird in allen Teams und Spielern der Saison.</Empty>
       ) : !teams.length && !players.length ? (
         <Empty>{stats ? `Nichts gefunden für „${query}“.` : 'Suche …'}</Empty>

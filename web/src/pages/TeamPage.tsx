@@ -10,7 +10,8 @@ import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Chips, Empty, ErrorBox, FavoriteStar, FormBadges, Loading, Section, StatTile, Tabs, TextLink } from '../components/ui.tsx';
 import { toggleFavorite, useFavorites } from '../lib/favorites.ts';
 import { perGame, percent, signed } from '../lib/format.ts';
-import { rankHistory, unitRanks, type UnitRow } from '../lib/standings.ts';
+import { teamNotes } from '../lib/notes.ts';
+import { rankHistory, remainingSchedules, unitRanks, type UnitRow } from '../lib/standings.ts';
 
 type Tab = 'games' | 'squad' | 'stats';
 
@@ -50,6 +51,28 @@ function RankHistoryCard({ data }: { data: TeamDetail }) {
   );
 }
 
+function RemainingCard({ data }: { data: TeamDetail }) {
+  const { data: league } = useLeague(data.league.id);
+  const rest = useMemo(() => (league ? remainingSchedules(league).get(data.team.id) : undefined), [league, data.team.id]);
+  if (!league || !rest?.games || rest.avgRank === null) return null;
+  const row = (label: string, value: React.ReactNode) => (
+    <div className="flex items-center justify-between py-2 text-sm">
+      <span className="text-(--color-ink-2)">{label}</span>
+      <span className="tabular font-semibold">{value}</span>
+    </div>
+  );
+  return (
+    <div className="card divide-y divide-(--color-line) px-4 py-2">
+      <h3 className="py-2 font-semibold">Restprogramm</h3>
+      {row('Verbleibende Spiele', `${rest.games} (${rest.home} Heim, ${rest.away} Auswärts)`)}
+      {row('Ø Tabellenplatz der Gegner', rest.avgRank.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))}
+      {row('Gegner aus der oberen Tabellenhälfte', `${rest.topHalf} von ${rest.games}`)}
+      {row('Schwere im Ligavergleich', rest.difficulty === 1 ? 'schwerstes Restprogramm' : `${rest.difficulty}.-schwerstes von ${league.teams.length}`)}
+      <p className="py-2 text-xs text-(--color-ink-3)">Gemessen am aktuellen Tabellenplatz der Gegner.</p>
+    </div>
+  );
+}
+
 function StatsTab({ data }: { data: TeamDetail }) {
   const s = data.stats;
   if (!s.played) return <Empty>Noch keine Spiele gespielt.</Empty>;
@@ -63,6 +86,7 @@ function StatsTab({ data }: { data: TeamDetail }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <RankHistoryCard data={data} />
+      <RemainingCard data={data} />
       <div className="card p-4">
         <h3 className="mb-2 font-semibold">Tore nach Spielabschnitt</h3>
         {s.reports ? (
@@ -124,6 +148,7 @@ export function TeamPage() {
   const played = games.filter((g) => g.status === 'finished').reverse();
   const upcoming = games.filter((g) => g.status !== 'finished');
   const units = leagueData ? unitRanks(leagueData.table, team.id) : null;
+  const notes = teamNotes(games, team.id, data.players);
   const unitTile = (label: string, row: UnitRow | null | undefined, noun: string) => (
     <StatTile
       label={label}
@@ -147,6 +172,16 @@ export function TeamPage() {
         </div>
         <FavoriteStar on={isFav} onClick={() => toggleFavorite(team.name)} />
       </div>
+
+      {notes.length > 0 && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {notes.map((n) => (
+            <span key={n} className="rounded-full bg-(--color-brand)/10 px-3 py-1 text-sm font-medium">
+              {n}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile

@@ -7,6 +7,7 @@ import { GameList } from '../components/GameRow.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Empty, ErrorBox, FormBadges, LiveBadge, Loading, Section, Tabs, useChanges } from '../components/ui.tsx';
 import { colorStyle, useTeamColors } from '../lib/colors.ts';
+import { forecast } from '../lib/forecast.ts';
 import { formatLongDay, formatTime } from '../lib/format.ts';
 import { activePenalties, liveScore, useLiveTicker, type LiveGame } from '../lib/liveTicker.ts';
 import { matchStats } from '../lib/matchStats.ts';
@@ -287,7 +288,7 @@ function MatchStatsView({ report, data }: { report: Pick<Report, 'home' | 'guest
   );
 }
 
-function Comparison({ homeId, guestId }: { homeId: number; guestId: number }) {
+function Comparison({ homeId, guestId, upcoming }: { homeId: number; guestId: number; upcoming: boolean }) {
   const home = useTeam(homeId);
   const guest = useTeam(guestId);
   const { data: league } = useLeague(home.data?.league.id);
@@ -300,6 +301,7 @@ function Comparison({ homeId, guestId }: { homeId: number; guestId: number }) {
   const rate = (made: number, att: number) => (att ? made / att : 0);
   const pct = (n: number) => `${Math.round(n * 100)} %`;
   const record = (r: { won: number; drawn: number; lost: number }) => `${r.won}-${r.drawn}-${r.lost}`;
+  const outlook = upcoming ? forecast(a.stats, b.stats) : null;
   const scorer = (t: TeamDetail) => {
     const p = t.players[0];
     return p ? (
@@ -354,6 +356,24 @@ function Comparison({ homeId, guestId }: { homeId: number; guestId: number }) {
         {row('Torschütze', scorer(a), scorer(b))}
       </div>
       <div className="card min-w-0 px-4 py-2">
+        {outlook && (
+          <div className="border-b border-(--color-line) py-2">
+            <div className="mb-1 flex items-baseline justify-between text-sm">
+              <span className="tabular font-semibold">{pct(outlook.home)}</span>
+              <span className="text-(--color-ink-2)">Prognose</span>
+              <span className="tabular font-semibold">{pct(outlook.guest)}</span>
+            </div>
+            <div className="flex h-2 gap-0.5 overflow-hidden rounded-full">
+              <div style={{ width: `${outlook.home * 100}%`, background: 'var(--color-home)' }} />
+              <div style={{ width: `${outlook.draw * 100}%`, background: 'var(--color-ink-3)' }} />
+              <div style={{ width: `${outlook.guest * 100}%`, background: 'var(--color-guest)' }} />
+            </div>
+            <p className="mt-1.5 text-xs text-(--color-ink-3)">
+              Unentschieden {pct(outlook.draw)} · erwartet etwa {Math.round(outlook.homeGoals)}:{Math.round(outlook.guestGoals)}. Eine Spielerei: grob
+              geschätzt aus Torschnitt, Heimvorteil und Form.
+            </p>
+          </div>
+        )}
         <CompareBar label="Tore pro Spiel" home={avg(a.stats.goalsFor, a.stats.played)} guest={avg(b.stats.goalsFor, b.stats.played)} format={num} />
         <CompareBar label="Gegentore pro Spiel" home={avg(a.stats.goalsAgainst, a.stats.played)} guest={avg(b.stats.goalsAgainst, b.stats.played)} format={num} />
         <CompareBar label="7-Meter-Quote" home={rate(a.stats.sevenGoals, a.stats.sevenAttempts)} guest={rate(b.stats.sevenGoals, b.stats.sevenAttempts)} format={pct} />
@@ -447,7 +467,7 @@ function GameView({ data }: { data: GameDetail }) {
           </div>
         )}
         {active === 'stats' && (report ?? ticker) && <MatchStatsView report={(report ?? ticker)!} data={data} />}
-        {active === 'compare' && game.homeId !== null && game.guestId !== null && <Comparison homeId={game.homeId} guestId={game.guestId} />}
+        {active === 'compare' && game.homeId !== null && game.guestId !== null && <Comparison homeId={game.homeId} guestId={game.guestId} upcoming={game.status === 'scheduled'} />}
 
         {data.game.status === 'finished' && !report && (
           <Empty>Der Spielbericht ist noch nicht verfügbar – er wird automatisch geladen, sobald h4a ihn veröffentlicht.</Empty>

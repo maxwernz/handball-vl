@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test \"test/*.test.ts\"",
     "dev": "vite",
     "build": "vite build && cp dist/index.html dist/404.html",
     "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json",
