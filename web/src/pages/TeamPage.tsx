@@ -8,6 +8,7 @@ import { GameList } from '../components/GameRow.tsx';
 import { PLAYER_VIEWS, PlayerTable, type PlayerView } from '../components/StatTables.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Chips, Empty, ErrorBox, FavoriteStar, FormBadges, Loading, Section, StatTile, Tabs, TextLink } from '../components/ui.tsx';
+import { useClubColor } from '../lib/colors.ts';
 import { toggleFavorite, useFavorites } from '../lib/favorites.ts';
 import { perGame, percent, signed } from '../lib/format.ts';
 import { teamNotes } from '../lib/notes.ts';
@@ -42,7 +43,7 @@ function RankHistoryCard({ data }: { data: TeamDetail }) {
       <RankChart
         rounds={history.rounds}
         teams={league.teams.length}
-        series={[...history.ranks].map(([id, r]) => ({ id, label: id === data.team.id ? data.team.name : '', ranks: r, color: id === data.team.id ? 'var(--color-brand)' : undefined }))}
+        series={[...history.ranks].map(([id, r]) => ({ id, label: id === data.team.id ? data.team.name : '', ranks: r, color: id === data.team.id ? 'var(--color-home)' : undefined }))}
       />
       <p className="mt-1 text-xs text-(--color-ink-3)">
         Bester Platz {Math.min(...ranks)}., schlechtester {Math.max(...ranks)}. · Graue Linien: übrige Teams
@@ -139,6 +140,7 @@ export function TeamPage() {
   const { data, isLoading, error } = useTeam(id);
   const { data: leagueData } = useLeague(data?.league.id);
   const favorites = useFavorites();
+  const clubColor = useClubColor(id);
 
   if (isLoading) return <Loading />;
   if (error || !data) return <ErrorBox error={error} />;
@@ -158,8 +160,9 @@ export function TeamPage() {
   );
 
   return (
-    <div>
-      <div className="card mb-4 flex items-center gap-4 p-4">
+    <div style={clubColor ? ({ '--color-home': clubColor } as React.CSSProperties) : undefined}>
+      {/* Inline, because the card's own border rule outranks utility classes. */}
+      <div className="card mb-4 flex items-center gap-4 p-4" style={clubColor ? { borderTop: '4px solid var(--color-home)' } : undefined}>
         <TeamLogo teamId={team.id} name={team.name} size={72} />
         <div className="min-w-0 flex-1">
           <h1 className="text-xl leading-tight font-bold">{team.name}</h1>

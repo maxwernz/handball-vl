@@ -3,6 +3,7 @@ import { usePlayer } from '../api.ts';
 import { GameBars, PeriodBars } from '../components/charts.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
 import { ErrorBox, Loading, Section, StatTile } from '../components/ui.tsx';
+import { useClubColor } from '../lib/colors.ts';
 import { formatDay, perGame, percent } from '../lib/format.ts';
 
 function HalfSplit({ periods }: { periods: number[] }) {
@@ -22,13 +23,14 @@ function HalfSplit({ periods }: { periods: number[] }) {
 export function PlayerPage() {
   const key = useParams().key!;
   const { data: p, isLoading, error } = usePlayer(key);
+  const clubColor = useClubColor(p?.teamId ?? null) ?? 'var(--color-brand)';
   if (isLoading) return <Loading />;
   if (error || !p) return <ErrorBox error={error} />;
 
   return (
     <div>
       <div className="card mb-4 flex items-center gap-4 p-4">
-        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-(--color-brand) text-2xl font-extrabold text-white">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-2xl font-extrabold text-white" style={{ background: clubColor }}>
           {p.no}
         </div>
         <div className="min-w-0">
@@ -77,7 +79,7 @@ export function PlayerPage() {
         </div>
         <div className="card p-4">
           <h3 className="mb-2 font-semibold">Tore nach Spielabschnitt</h3>
-          <PeriodBars series={[{ label: 'Tore', values: p.goalsByPeriod, color: 'var(--color-brand)' }]} />
+          <PeriodBars series={[{ label: 'Tore', values: p.goalsByPeriod, color: clubColor }]} />
           <HalfSplit periods={p.goalsByPeriod} />
         </div>
       </div>

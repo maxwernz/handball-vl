@@ -57,6 +57,10 @@ function Scoreboard({ data, ticker }: { data: GameDetail; ticker: LiveGame | und
         </Link>
         {game.round && <> · {game.round}. Spieltag</>} · Spiel {game.no}
       </div>
+      <div className="flex h-1.5" aria-hidden>
+        <div className="flex-1 bg-(--color-home)" />
+        <div className="flex-1 bg-(--color-guest)" />
+      </div>
       <div className="flex items-start gap-2 px-3 py-5">
         {team(game.homeId, game.home, data.report?.home.name)}
         <div className="flex w-28 shrink-0 flex-col items-center pt-3 sm:w-36">

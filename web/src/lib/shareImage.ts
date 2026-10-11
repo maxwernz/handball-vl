@@ -59,13 +59,16 @@ async function draw(data: ShareData): Promise<HTMLCanvasElement> {
   canvas.width = canvas.height = SIZE;
   const ctx = canvas.getContext('2d')!;
   const { game } = data;
+  // A canvas knows no CSS variables; the neutral stand-in becomes a gray that reads on the dark picture.
+  const paint = (color: string) => (color.startsWith('var(') ? '#9aa7bb' : color);
+  const colors = { home: paint(data.colors.home), guest: paint(data.colors.guest) };
   const [homeLogo, guestLogo] = await Promise.all([loadImage(data.logos.home), loadImage(data.logos.guest)]);
 
   ctx.fillStyle = '#0f1b2d';
   ctx.fillRect(0, 0, SIZE, SIZE);
-  ctx.fillStyle = data.colors.home;
+  ctx.fillStyle = colors.home;
   ctx.fillRect(0, 0, SIZE / 2, 18);
-  ctx.fillStyle = data.colors.guest;
+  ctx.fillStyle = colors.guest;
   ctx.fillRect(SIZE / 2, 0, SIZE / 2, 18);
 
   const text = (value: string, x: number, y: number, font: string, color: string, align: CanvasTextAlign = 'center') => {
@@ -122,8 +125,8 @@ async function draw(data: ShareData): Promise<HTMLCanvasElement> {
         text(goals, x, y, `800 40px ${FONT}`, color, align);
         text(name, align === 'left' ? x + offset : x - offset, y, `40px ${FONT}`, '#ffffff', align);
       });
-    column(scorers.home, 90, 'left', data.colors.home);
-    column(scorers.guest, SIZE - 90, 'right', data.colors.guest);
+    column(scorers.home, 90, 'left', colors.home);
+    column(scorers.guest, SIZE - 90, 'right', colors.guest);
   }
   text('Handball VL', SIZE / 2, 1030, `600 30px ${FONT}`, 'rgba(255,255,255,0.45)');
   return canvas;

@@ -4,8 +4,12 @@
 import type { CSSProperties } from 'react';
 import { useMeta } from '../api.ts';
 
-/** Stand-ins when a club has no color or the two are too alike; the first two are the default home and guest colors. */
-const STAND_INS = ['#2a78d6', '#eb6834', '#8a4fd0'];
+const DEFAULTS = { home: '#2a78d6', guest: '#eb6834' };
+/**
+ * Shown for a team without a color of its own, or whose color is too close to the
+ * opponent's: a neutral gray rather than an invented color that looks like a club's.
+ */
+export const NEUTRAL = 'var(--color-ink-2)';
 const MIN_HUE_GAP = 40;
 
 function hue(hex: string) {
@@ -21,15 +25,19 @@ function alike(a: string, b: string) {
   return Math.min(gap, 360 - gap) < MIN_HUE_GAP;
 }
 
-/** Home and guest color for a game. The home team keeps its color; the guest gets a stand-in if it is too close. */
+/** The club's own color, if its logo has one. */
+export function useClubColor(teamId: number | null): string | undefined {
+  const colors = useMeta().data?.colors;
+  return teamId !== null ? colors?.[teamId] : undefined;
+}
+
+/** Home and guest color for a game: each club's own where the two can be told apart. */
 export function useTeamColors(homeId: number | null, guestId: number | null): { home: string; guest: string } {
-  const colors = useMeta().data?.colors ?? {};
-  const own = (id: number | null) => (id !== null ? colors[id] : undefined);
-  const standIn = (other: string) => STAND_INS.find((c) => !alike(c, other))!;
-  const guestColor = own(guestId);
-  const home = own(homeId) ?? (guestColor ? standIn(guestColor) : STAND_INS[0]);
-  const guest = guestColor && !alike(guestColor, home) ? guestColor : home === STAND_INS[0] ? STAND_INS[1] : standIn(home);
-  return { home, guest };
+  const home = useClubColor(homeId);
+  const guest = useClubColor(guestId);
+  if (!home && !guest) return DEFAULTS;
+  if (home && guest && alike(home, guest)) return { home, guest: NEUTRAL };
+  return { home: home ?? NEUTRAL, guest: guest ?? NEUTRAL };
 }
 
 /** Sets the home/guest color tokens for everything inside the element. */
