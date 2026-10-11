@@ -26,7 +26,7 @@ const isGoal = (e: MatchEvent) => e.type === 'goal' || e.type === 'sevenGoal';
 
 const PENALTY_SECONDS = 120;
 
-export function matchStats(report: Report): { home: SideStats; guest: SideStats; flow: GameFlow } {
+export function matchStats(report: Pick<Report, 'home' | 'guest' | 'events'>): { home: SideStats; guest: SideStats; flow: GameFlow } {
   const make = (side: 'home' | 'guest'): SideStats => {
     const sheet = report[side];
     const lines = [...sheet.players, ...sheet.officials];

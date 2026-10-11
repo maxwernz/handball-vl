@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { Game, League, LeagueRef, Meta } from '../../../shared/types.ts';
-import { useGames, useLeague, useMeta } from '../api.ts';
+import { useGames, useLeague, useMeta, useTopScorers } from '../api.ts';
 import { GameList } from '../components/GameRow.tsx';
 import { StandingsTable } from '../components/StandingsTable.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
@@ -24,6 +24,59 @@ function mondayOf(offsetWeeks: number) {
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + offsetWeeks * 7);
   return d;
+}
+
+/** Standout results and the best scorer among the finished games of a week. */
+function WeekHighlights({ games }: { games: Game[] }) {
+  const { data: scorers } = useTopScorers();
+  const finished = games.filter((g) => g.status === 'finished' && g.homeGoals !== null && g.guestGoals !== null);
+  if (!finished.length) return null;
+  const diff = (g: Game) => Math.abs(g.homeGoals! - g.guestGoals!);
+  const total = (g: Game) => g.homeGoals! + g.guestGoals!;
+  const best = (score: (g: Game) => number) => finished.reduce((a, b) => (score(b) > score(a) ? b : a));
+  const biggest = best(diff);
+  // Among equally close games the one with more goals was the bigger spectacle.
+  const closest = best((g) => -diff(g) * 1000 + total(g));
+  const mostGoals = best(total);
+  const top = finished
+    .map((g) => ({ game: g, scorer: scorers?.[g.id] }))
+    .filter((x) => x.scorer)
+    .reduce<{ game: Game; scorer: NonNullable<typeof scorers>[number] } | null>((a, b) => (!a || b.scorer!.goals > a.scorer.goals ? { game: b.game, scorer: b.scorer! } : a), null);
+  const row = (label: string, value: string, g: Game) => (
+    <div className="py-2 text-sm">
+      <div className="text-xs text-(--color-ink-3)">
+        {label} · {value}
+      </div>
+      <Link to={`/spiel/${g.id}`} className="block truncate hover:underline">
+        <span className="tabular font-semibold">
+          {g.homeGoals}:{g.guestGoals}
+        </span>{' '}
+        {g.home} – {g.guest}
+      </Link>
+    </div>
+  );
+  return (
+    <div className="card mt-4 divide-y divide-(--color-line) px-4 py-2">
+      <h3 className="py-2 font-semibold">Höhepunkte der Woche</h3>
+      {top && (
+        <div className="py-2 text-sm">
+          <div className="text-xs text-(--color-ink-3)">Bester Torschütze · {top.scorer.goals} Tore</div>
+          <span className="flex min-w-0 items-center gap-2">
+            <TeamLogo teamId={top.scorer.teamId} name={top.scorer.team} size={20} />
+            <Link to={`/spieler/${top.scorer.key}`} className="truncate hover:underline">
+              {top.scorer.name}
+            </Link>
+            <Link to={`/spiel/${top.game.id}`} className="min-w-0 truncate text-(--color-ink-3) hover:underline">
+              {top.game.home} – {top.game.guest}
+            </Link>
+          </span>
+        </div>
+      )}
+      {row('Höchster Sieg', `${diff(biggest)} Tore Differenz`, biggest)}
+      {row('Knappstes Spiel', diff(closest) ? `${diff(closest)} ${diff(closest) === 1 ? 'Tor' : 'Tore'} Differenz` : 'Unentschieden', closest)}
+      {row('Torreichstes Spiel', `${total(mostGoals)} Tore`, mostGoals)}
+    </div>
+  );
 }
 
 type GameFilter = 'mine' | 'all';
@@ -111,6 +164,7 @@ function WeekGames({ leagues, mine }: { leagues: LeagueRef[]; mine: ((g: Game) =
               <GameList games={list} showDate={false} leagueTag={tag} />
             </div>
           ))}
+          <WeekHighlights games={byDay.flatMap(([, list]) => list)} />
         </div>
       )}
     </Section>

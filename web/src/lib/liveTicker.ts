@@ -2,9 +2,10 @@
 // events can be read with the token h4a publishes in the league data. This is
 // the same service the "Liveticker" link on bwhv.org leads to.
 
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { H4A_BASE } from '../../../shared/h4a.ts';
-import type { EventType, MatchEvent } from '../../../shared/types.ts';
+import type { EventType, MatchEvent, PlayerLine, Report, TeamSheet } from '../../../shared/types.ts';
 
 const POLL_MS = 20_000;
 
@@ -22,9 +23,22 @@ interface RawMember {
   player_no: string;
 }
 
+interface RawTeam {
+  club: string;
+  team_members: RawMember[];
+}
+
 interface RawTeams {
-  team_home: { team_members: RawMember[] };
-  team_guest: { team_members: RawMember[] };
+  team_home: RawTeam;
+  team_guest: RawTeam;
+}
+
+/** What the ticker knows about a game so far, shaped like a match report so the same views can show it. */
+export interface LiveGame extends Pick<Report, 'home' | 'guest' | 'events'> {
+  homeGoals: number;
+  guestGoals: number;
+  /** "Halbzeit", "Ende" or the minute of the latest ticker entry. */
+  phase: string;
 }
 
 async function call<T>(token: string, cmd: string): Promise<T> {
@@ -45,13 +59,45 @@ const TYPES: [RegExp, EventType][] = [
   [/Auszeit/, 'timeout'],
 ];
 
-function names(members: RawMember[] | undefined) {
-  const named = (members ?? []).filter((m) => m.name && m.name !== 'N.N.');
-  return new Map(named.map((m) => [m.player_no.trim(), [m.prename === 'N.N.' ? '' : m.prename, m.name].join(' ').trim()]));
+const clock = (t: number) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+
+/** Officials wear letters instead of numbers. */
+const isOfficial = (no: string) => !/^\d+$/.test(no);
+
+function emptyLine(no: string, name: string | null): PlayerLine {
+  return {
+    no,
+    name: name ?? (isOfficial(no) ? `Offizieller ${no}` : `Spieler ${no}`),
+    goals: 0,
+    sevenGoals: 0,
+    sevenAttempts: 0,
+    warning: null,
+    twoMinutes: [],
+    disqualification: null,
+    official: isOfficial(no),
+    ...(name ? {} : { anonymous: true }),
+  };
 }
 
-export function parseTicker(messages: RawMessage[], teams?: RawTeams): MatchEvent[] {
-  const players = { home: names(teams?.team_home.team_members), guest: names(teams?.team_guest.team_members) };
+function lines(team: RawTeam | undefined) {
+  const map = new Map<string, PlayerLine>();
+  for (const m of team?.team_members ?? []) {
+    const no = m.player_no.trim();
+    const named = m.name && m.name !== 'N.N.';
+    const line = emptyLine(no, named ? [m.prename === 'N.N.' ? '' : m.prename, m.name].join(' ').trim() : null);
+    // Unnamed officials are just empty seats on the bench.
+    if (named || !line.official) map.set(no, line);
+  }
+  return map;
+}
+
+function sheet(team: RawTeam | undefined, players: Map<string, PlayerLine>, fallback: string): TeamSheet {
+  const all = [...players.values()].sort((a, b) => a.no.localeCompare(b.no, 'de', { numeric: true }));
+  return { name: team?.club ?? fallback, players: all.filter((l) => !l.official), officials: all.filter((l) => l.official) };
+}
+
+export function parseTicker(messages: RawMessage[], teams?: RawTeams): LiveGame {
+  const players = { home: lines(teams?.team_home), guest: lines(teams?.team_guest) };
   const events: MatchEvent[] = [];
   for (const m of messages) {
     const type = TYPES.find(([pattern]) => pattern.test(m.message))?.[1];
@@ -59,23 +105,44 @@ export function parseTicker(messages: RawMessage[], teams?: RawTeams): MatchEven
     const side = m.message.includes('Heimmannschaft') ? 'home' : m.message.includes('Gastmannschaft') ? 'guest' : null;
     const no = m.message.match(/Nummer\s+(\S+)/)?.[1] ?? null;
     const t = Number(m.game_time) || 0;
+    let line: PlayerLine | undefined;
+    if (no && side) {
+      line = players[side].get(no) ?? emptyLine(no, null);
+      players[side].set(no, line);
+      if (type === 'goal' || type === 'sevenGoal') line.goals++;
+      if (type === 'sevenGoal') line.sevenGoals++;
+      if (type === 'sevenGoal' || type === 'sevenMiss') line.sevenAttempts++;
+      if (type === 'warning') line.warning = clock(t);
+      if (type === 'twoMinutes') line.twoMinutes.push(clock(t));
+      if (type === 'disqualification') line.disqualification = clock(t);
+    }
     events.push({
-      clock: `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`,
+      clock: clock(t),
       t,
       type,
       side,
       no,
-      player: no && side ? (players[side].get(no) ?? `Nr. ${no}`) : null,
+      player: line ? (line.anonymous ? `Nr. ${no}` : line.name) : null,
       homeScore: Number(m.home_score) || 0,
       guestScore: Number(m.guest_score) || 0,
       text: m.message,
     });
   }
-  return events;
+  const last = messages.at(-1);
+  // "Spielstand 1. Halbzeit" closes a half; it stays the latest message until play resumes.
+  const half = last?.message.match(/^Spielstand (\d)\. Halbzeit/)?.[1];
+  return {
+    events,
+    home: sheet(teams?.team_home, players.home, 'Heim'),
+    guest: sheet(teams?.team_guest, players.guest, 'Gast'),
+    homeGoals: Number(last?.home_score) || 0,
+    guestGoals: Number(last?.guest_score) || 0,
+    phase: half === '1' ? 'Halbzeit' : half ? 'Ende' : `${Math.floor((Number(last?.game_time) || 0) / 60) + 1}. Minute`,
+  };
 }
 
-/** The events of a game's live ticker so far; polls while the game is running. */
-export function useLiveTicker(token: string | null | undefined, live: boolean): MatchEvent[] | undefined {
+/** A game as told by its live ticker so far; polls while the game is running. */
+export function useLiveTicker(token: string | null | undefined, live: boolean): LiveGame | undefined {
   // No retries: an error may mean h4a is rate limiting, and then we back off.
   const messages = useQuery({
     queryKey: ['ticker', token],
@@ -95,5 +162,8 @@ export function useLiveTicker(token: string | null | undefined, live: boolean): 
     retry: false,
     staleTime: 10 * 60_000,
   });
-  return messages.data && parseTicker(messages.data, teams.data?.team_home ? teams.data : undefined);
+  return useMemo(
+    () => (messages.data?.length ? parseTicker(messages.data, teams.data?.team_home ? teams.data : undefined) : undefined),
+    [messages.data, teams.data],
+  );
 }

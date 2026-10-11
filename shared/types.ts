@@ -240,6 +240,15 @@ export interface LeagueSummary {
   topPlayerGame: { key: string; name: string; teamId: number; team: string; goals: number; gameId: number; opponent: string } | null;
 }
 
+/** The best scorer of a game, for the highlights of a week. */
+export interface GameScorer {
+  key: string;
+  name: string;
+  teamId: number;
+  team: string;
+  goals: number;
+}
+
 export interface SiteIndex {
   seasons: Season[];
   currentSeason: number;

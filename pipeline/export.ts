@@ -6,6 +6,7 @@ import path from 'node:path';
 import type {
   Game,
   GameDetail,
+  GameScorer,
   GameRecord,
   LeagueRef,
   LeagueSummary,
@@ -73,6 +74,17 @@ function stats(data: SeasonData, leagueId: number | null): StatsResponse {
   };
 }
 
+/** The best scorer of every game with a report, by game id. */
+function topScorers(data: SeasonData): Record<number, GameScorer> {
+  const best: Record<number, GameScorer> = {};
+  for (const { key, name, teamId, team, log } of data.players.values()) {
+    for (const { gameId, goals } of log) {
+      if (goals > (best[gameId]?.goals ?? 0)) best[gameId] = { key, name, teamId, team, goals };
+    }
+  }
+  return best;
+}
+
 /** Resolves logos for all teams and copies them next to the data; returns team id -> file name. */
 async function exportLogos(data: SeasonData): Promise<Record<number, string>> {
   const logos: Record<number, string> = {};
@@ -102,6 +114,7 @@ async function exportSeason(season: number, current: boolean) {
   await emit(`${base}/meta`, meta);
   await emit(`${base}/games`, [...data.games].sort((a, b) => a.ts - b.ts));
   await emit(`${base}/stats`, stats(data, null));
+  await emit(`${base}/scorers`, topScorers(data));
 
   for (const league of data.leagues) {
     await emit(`${base}/league/${league.id}`, league);

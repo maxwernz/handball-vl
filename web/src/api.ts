@@ -7,6 +7,7 @@ import { gameStatus, isActive, leagueUrl, normalizeTable, rawGames, scoreFields,
 import type {
   Game,
   GameDetail,
+  GameScorer,
   League,
   Meta,
   PlayerDetail,
@@ -192,6 +193,17 @@ export function useStats(league: number | null) {
     queryFn: () => get<StatsResponse>(`s/${season}/${league ? `stats-${league}` : 'stats'}`),
     enabled: season !== undefined,
     placeholderData: keepPreviousData,
+    staleTime: POLL_MS,
+  });
+}
+
+/** Best scorer per game id, for all games of the season with a match report. */
+export function useTopScorers() {
+  const season = useSeasonId();
+  return useQuery({
+    queryKey: ['scorers', season],
+    queryFn: () => get<Record<number, GameScorer>>(`s/${season}/scorers`),
+    enabled: season !== undefined,
     staleTime: POLL_MS,
   });
 }
