@@ -21,6 +21,7 @@ web/        React-App (Vite, Tailwind, PWA)
 | Spielberichte als Text | h4a „Robotext“ |
 | Vereinslogos | Vereinsverzeichnis von handball.net |
 | Live-Spielstände | die App fragt während laufender Spiele direkt bei h4a nach (alle 20 s) |
+| Live-Ticker | h4a-Ticker-Service, mit dem Token (`gToken`), das h4a während eines getickerten Spiels in den Ligadaten mitliefert |
 
 Der BWHV ist auf der neuen handball.net-Plattform nicht mit Spielbetrieb vertreten, deshalb kommen die
 Spieldaten von h4a und nur die Logos von handball.net.

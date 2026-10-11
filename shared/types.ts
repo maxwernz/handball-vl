@@ -58,6 +58,8 @@ export interface Game {
   guestPoints: number | null;
   /** h4a's own "game in progress" flag. */
   liveFlag: boolean;
+  /** Token for h4a's live ticker of this game; h4a only hands it out while the game is ticked. */
+  tickerToken?: string | null;
   /** Derived from the score, the live flag and the kickoff time; recomputed by the web app. */
   status: GameStatus;
   comment: string;

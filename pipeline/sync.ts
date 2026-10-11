@@ -117,6 +117,9 @@ export async function syncLeague(season: number, ref: LeagueRef): Promise<League
     tableNotes: content.scoreComments.map((c) => c.replace(/<br\s*\/?>/g, ' ')),
     games: normalizeGames(rawGames(res), ref.id, shortToId, teams.length),
   };
+  // h4a drops the ticker token after the final whistle; keep it until the report is in.
+  const tokens = new Map(previous?.games.map((g) => [g.id, g.tickerToken]) ?? []);
+  for (const game of league.games) game.tickerToken ??= tokens.get(game.id) ?? null;
   await write(keys.league(season, ref.id), league);
   return league;
 }

@@ -12,6 +12,8 @@ export interface RawGame {
   sGID: string;
   gNo: string;
   live: boolean;
+  /** Access token of the h4a live ticker; empty unless the game is being ticked. */
+  gToken: string;
   gDate: string;
   gTime: string;
   gGymnasiumName: string;
@@ -116,6 +118,7 @@ export function scoreFields(g: RawGame) {
     homePoints: num(g.gHomePoints),
     guestPoints: num(g.gGuestPoints),
     liveFlag: Boolean(g.live),
+    tickerToken: String(g.gToken ?? '').trim() || null,
   };
 }
 

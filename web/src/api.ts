@@ -39,6 +39,15 @@ function refresh(game: Game): Game {
   return status === game.status ? game : { ...game, status };
 }
 
+/** h4a only publishes a ticker token while the game runs, so hold on to the ones seen. */
+const tickerTokens = new Map<number, string>();
+
+function withToken(game: Game): Game {
+  if (game.tickerToken) tickerTokens.set(game.id, game.tickerToken);
+  const tickerToken = tickerTokens.get(game.id);
+  return tickerToken && !game.tickerToken ? { ...game, tickerToken } : game;
+}
+
 interface LiveLeague {
   games: Map<number, ReturnType<typeof scoreFields>>;
   table: TableRow[];
@@ -66,7 +75,7 @@ function fetchLive(client: QueryClient, season: number, leagueId: number): Promi
 
 /** Refreshes statuses and, for leagues with a running game, merges live scores from h4a. */
 async function withLive(client: QueryClient, season: number, games: Game[]): Promise<{ games: Game[]; tables: Map<number, TableRow[]> }> {
-  const refreshed = games.map(refresh);
+  const refreshed = games.map((g) => withToken(refresh(g)));
   const active = [...new Set(refreshed.filter((g) => isActive(g)).map((g) => g.leagueId))];
   const tables = new Map<number, TableRow[]>();
   if (!active.length) return { games: refreshed, tables };
@@ -83,7 +92,7 @@ async function withLive(client: QueryClient, season: number, games: Game[]): Pro
   return {
     games: refreshed.map((g) => {
       const fields = live.get(g.leagueId)?.games.get(g.id);
-      return fields ? refresh({ ...g, ...fields }) : g;
+      return fields ? withToken(refresh({ ...g, ...fields })) : g;
     }),
     tables,
   };

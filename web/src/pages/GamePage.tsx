@@ -7,13 +7,14 @@ import { GameList } from '../components/GameRow.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Empty, ErrorBox, FormBadges, LiveBadge, Loading, Section, Tabs } from '../components/ui.tsx';
 import { formatLongDay, formatTime } from '../lib/format.ts';
+import { useLiveTicker } from '../lib/liveTicker.ts';
 import { matchStats } from '../lib/matchStats.ts';
 import { unitTable, type Unit, type UnitRow } from '../lib/standings.ts';
 import { playerKey } from '../../../shared/players.ts';
 
 type Tab = 'summary' | 'ticker' | 'lineups' | 'stats' | 'compare';
 
-function Scoreboard({ data }: { data: GameDetail }) {
+function Scoreboard({ data, hasTicker }: { data: GameDetail; hasTicker: boolean }) {
   const { game, league } = data;
   const played = game.status !== 'scheduled';
   const team = (id: number | null, name: string, full: string | undefined) => {
@@ -75,7 +76,7 @@ function Scoreboard({ data }: { data: GameDetail }) {
       {game.comment && <div className="border-t border-(--color-line) px-4 py-2 text-center text-sm">{game.comment}</div>}
       {game.status === 'live' && (
         <div className="border-t border-(--color-line) bg-(--color-live)/10 px-4 py-2 text-center text-xs">
-          Live-Spielstand – aktualisiert sich automatisch alle 20 Sekunden. Der komplette Spielverlauf erscheint mit dem Spielbericht.
+          Live-Spielstand – aktualisiert sich automatisch alle 20 Sekunden.{!hasTicker && ' Der komplette Spielverlauf erscheint mit dem Spielbericht.'}
         </div>
       )}
     </div>
@@ -114,9 +115,9 @@ function describe(e: MatchEvent) {
   }
 }
 
-function Ticker({ report, home, guest }: { report: Report; home: string; guest: string }) {
-  const [newestFirst, setNewestFirst] = useState(false);
-  const events = newestFirst ? [...report.events].reverse() : report.events;
+function Ticker({ events: all, home, guest, live }: { events: MatchEvent[]; home: string; guest: string; live?: boolean }) {
+  const [newestFirst, setNewestFirst] = useState(Boolean(live));
+  const events = newestFirst ? [...all].reverse() : all;
   let halftimeShown = false;
   return (
     <div>
@@ -194,8 +195,8 @@ function Lineup({ sheet, teamId, side }: { sheet: TeamSheet; teamId: number | nu
         <tbody>
           {sheet.players.map((p) => (
             <tr key={`${p.no}-${p.name}`} className="border-t border-(--color-line)">
-              <td className="py-1.5 pl-3 text-(--color-ink-3)">{p.no}</td>
-              <td className="max-w-0 truncate py-1.5">
+              <td className="py-1.5 pr-2 pl-3 text-(--color-ink-3)">{p.no}</td>
+              <td className="w-full py-1.5 pr-1 break-words">
                 {p.anonymous || teamId === null ? (
                   <span className="text-(--color-ink-2)">{p.name}</span>
                 ) : (
@@ -205,8 +206,8 @@ function Lineup({ sheet, teamId, side }: { sheet: TeamSheet; teamId: number | nu
                 )}
               </td>
               <td className={`px-2 py-1.5 text-right ${p.goals ? 'font-semibold' : 'text-(--color-ink-3)'}`}>{p.goals || '–'}</td>
-              <td className="px-2 py-1.5 text-right text-(--color-ink-2)">{p.sevenAttempts ? `${p.sevenGoals}/${p.sevenAttempts}` : ''}</td>
-              <td className="py-1.5 pr-3 pl-2 text-right">{penalties(p)}</td>
+              <td className="px-2 py-1.5 text-right whitespace-nowrap text-(--color-ink-2)">{p.sevenAttempts ? `${p.sevenGoals}/${p.sevenAttempts}` : ''}</td>
+              <td className="py-1.5 pr-3 pl-2 text-right whitespace-nowrap">{penalties(p)}</td>
             </tr>
           ))}
         </tbody>
@@ -344,6 +345,8 @@ export function GamePage() {
   const id = Number(useParams().id);
   const { data, isLoading, error } = useGame(id);
   const [tab, setTab] = useState<Tab | null>(null);
+  // Until the match report is in, the course of the game comes from h4a's live ticker.
+  const liveEvents = useLiveTicker(data && !data.report ? data.game.tickerToken : null, data?.game.status === 'live');
   if (isLoading) return <Loading />;
   if (error || !data) return <ErrorBox error={error} />;
 
@@ -351,6 +354,7 @@ export function GamePage() {
   const compare = game.homeId !== null && game.guestId !== null ? [{ id: 'compare' as const, label: 'Vergleich' }] : [];
   const tabs: { id: Tab; label: string }[] = [
     ...(game.status === 'scheduled' ? compare : []),
+    ...(!report && liveEvents?.length ? [{ id: 'ticker' as const, label: 'Live-Ticker' }] : []),
     ...(summary ? [{ id: 'summary' as const, label: 'Bericht' }] : []),
     ...(report ? [
       { id: 'ticker' as const, label: 'Ticker' },
@@ -363,7 +367,7 @@ export function GamePage() {
 
   return (
     <div>
-      <Scoreboard data={data} />
+      <Scoreboard data={data} hasTicker={Boolean(liveEvents?.length)} />
       {tabs.length > 0 && <Tabs tabs={tabs} value={active!} onChange={setTab} />}
 
       {active === 'summary' && summary && (
@@ -373,7 +377,10 @@ export function GamePage() {
           <p className="mt-2 text-xs text-(--color-ink-3)">Automatisch erstellter Spielbericht (handball4all).</p>
         </article>
       )}
-      {active === 'ticker' && report && <Ticker report={report} home={data.game.home} guest={data.game.guest} />}
+      {active === 'ticker' && report && <Ticker events={report.events} home={data.game.home} guest={data.game.guest} />}
+      {active === 'ticker' && !report && liveEvents && (
+        <Ticker key="live" events={liveEvents} home={data.game.home} guest={data.game.guest} live />
+      )}
       {active === 'lineups' && report && (
         <div className="grid gap-4 lg:grid-cols-2">
           <Lineup sheet={report.home} teamId={data.game.homeId} side="home" />
