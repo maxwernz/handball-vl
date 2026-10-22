@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { BASE, useMeta } from '../api.ts';
 
-const TONES = ['#2a78d6', '#1baf7a', '#eb6834', '#4a3aa7', '#008300', '#e34948', '#c98500', '#d55181'];
+const TONES = ['#2265b0', '#14744f', '#ad4826', '#4a3aa7', '#008300', '#b82c38', '#856000', '#ab3266'];
 
 export function initials(name: string) {
   const words = name
@@ -20,10 +20,10 @@ export function tone(name: string) {
 
 export function TeamLogo({ teamId, name, size = 28 }: { teamId: number | null; name: string; size?: number }) {
   const { data: meta } = useMeta();
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<string | undefined>();
   const style = { width: size, height: size };
   const file = teamId !== null ? meta?.logos[teamId] : undefined;
-  if (!file || failed) {
+  if (!file || failed === file) {
     return (
       <span
         aria-hidden
@@ -41,7 +41,7 @@ export function TeamLogo({ teamId, name, size = 28 }: { teamId: number | null; n
       loading="lazy"
       className="shrink-0 rounded-md object-contain"
       style={style}
-      onError={() => setFailed(true)}
+      onError={() => setFailed(file)}
     />
   );
 }

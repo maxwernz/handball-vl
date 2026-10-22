@@ -128,7 +128,7 @@ async function draw(data: ShareData): Promise<HTMLCanvasElement> {
     column(scorers.home, 90, 'left', colors.home);
     column(scorers.guest, SIZE - 90, 'right', colors.guest);
   }
-  text('Handball VL', SIZE / 2, 1030, `600 30px ${FONT}`, 'rgba(255,255,255,0.45)');
+  text('Handball BW', SIZE / 2, 1030, `600 30px ${FONT}`, 'rgba(255,255,255,0.45)');
   return canvas;
 }
 

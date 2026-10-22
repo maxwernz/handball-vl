@@ -12,18 +12,26 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // Let people finish reading a match before activating an app update.
+      registerType: 'prompt',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Handball Verbandsliga BW',
-        short_name: 'Handball VL',
-        description: 'Tabellen, Ergebnisse, Spielberichte und Statistiken der Männer-Verbandsligen im BWHV',
+        name: 'Handball BW – Ergebnisse & Live',
+        short_name: 'Handball BW',
+        description: 'Handball in Baden-Württemberg: Spiele, Tabellen, Live-Ticker und Statistiken für Frauen und Männer.',
         lang: 'de',
-        theme_color: '#0b1426',
-        background_color: '#0b1426',
+        theme_color: '#111820',
+        background_color: '#f5f6f8',
         display: 'standalone',
+        id: '.',
         start_url: '.',
         scope: '.',
+        categories: ['sports', 'news'],
+        shortcuts: [
+          { name: 'Live-Konferenz', short_name: 'Live', url: './live' },
+          { name: 'Alle Ligen', short_name: 'Ligen', url: './ligen' },
+          { name: 'Teams & Spieler suchen', short_name: 'Suche', url: './suche' },
+        ],
         icons: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
@@ -31,6 +39,9 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Only cache the app shell up front. Thousands of reports are cached on demand.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globIgnores: ['api/**'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/\/api\//],
         runtimeCaching: [

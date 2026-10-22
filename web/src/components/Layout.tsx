@@ -1,152 +1,78 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useEffect } from 'react';
-import { BASE, useIndex, useLiveGames, useMeta, useSeasonId } from '../api.ts';
-import { useFavoriteLeagues } from '../lib/favorites.ts';
-import { leagueLabel } from '../lib/format.ts';
+import { useIndex, useLiveGames, useMeta, useSeasonId } from '../api.ts';
 import { useSeason } from '../lib/season.tsx';
-import { storage } from '../lib/storage.ts';
-import { LiveBadge } from './ui.tsx';
+import { AppStatus } from './AppStatus.tsx';
+import { Icon, type IconName } from './Icon.tsx';
+import { ErrorBox, Loading } from './ui.tsx';
 
 function SeasonSelect() {
   const { data: index } = useIndex();
   const seasonId = useSeasonId();
   const { setSeason } = useSeason();
   const navigate = useNavigate();
-  if (!index || index.seasons.length < 2) return null;
+  if (!index) return null;
+  if (index.seasons.length < 2) return <span className="season-label">{index.seasons[0]?.name}</span>;
   return (
-    <select
-      aria-label="Saison"
-      value={seasonId}
-      onChange={(e) => {
-        const id = Number(e.target.value);
-        setSeason(id === index.currentSeason ? 'current' : id);
-        // Team and league ids differ per season, so start over from the home page.
-        navigate('/');
-      }}
-      className="rounded-lg border border-white/15 bg-white/10 px-2 py-1 text-sm text-white outline-none"
-    >
-      {index.seasons.map((s) => (
-        <option key={s.id} value={s.id} className="text-black">
-          {s.name}
-        </option>
-      ))}
+    <select aria-label="Saison auswählen" value={seasonId} onChange={(e) => {
+      const id = Number(e.target.value);
+      setSeason(id === index.currentSeason ? 'current' : id);
+      navigate('/');
+    }} className="season-select">
+      {index.seasons.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
     </select>
   );
 }
-
-const STALE_MS = 36 * 3600_000;
-
+const navigation: { to: string; label: string; icon: IconName; end?: boolean }[] = [
+  { to: '/', label: 'Spieltag', icon: 'calendar', end: true },
+  { to: '/live', label: 'Live', icon: 'live' },
+  { to: '/ligen', label: 'Ligen', icon: 'leagues' },
+  { to: '/statistik', label: 'Statistik', icon: 'stats' },
+  { to: '/suche', label: 'Suche', icon: 'search' },
+];
 export function Layout() {
   const { data: meta } = useMeta();
-  const { data: index } = useIndex();
+  const { data: index, error: indexError, isPending: indexPending } = useIndex();
   const live = useLiveGames().filter((g) => g.status === 'live').length;
   const location = useLocation();
-  // The pipeline runs at least once every morning; a much older stand means it stopped.
-  const stale = index !== undefined && Date.now() - Date.parse(index.updatedAt) > STALE_MS;
-  const favoriteLeagues = useFavoriteLeagues();
-  // Favorite leagues first; the sort is stable, so the rest keep their order.
-  const leagues = [...(meta?.leagues ?? [])].sort((a, b) => Number(favoriteLeagues.includes(b.short)) - Number(favoriteLeagues.includes(a.short)));
-  const lastLeague = storage.get('lastLeague');
-  const leagueHref = `/liga/${lastLeague && leagues.some((l) => String(l.id) === lastLeague) ? lastLeague : (leagues[0]?.id ?? '')}`;
-
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [location.pathname]);
-
-  const navItem = ({ isActive }: { isActive: boolean }) =>
-    `rounded-full px-3 py-1.5 text-sm font-medium whitespace-nowrap transition ${isActive ? 'bg-white text-(--color-header)' : 'text-white/80 hover:bg-white/10 hover:text-white'}`;
-
+  const stale = index !== undefined && Date.now() - Date.parse(index.updatedAt) > 36 * 3600_000;
+  const updated = index && Number.isFinite(Date.parse(index.updatedAt))
+    ? new Date(index.updatedAt).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null;
+  useEffect(() => { window.scrollTo(0, 0); }, [location.pathname]);
+  const active = (to: string, isActive: boolean) => isActive || (to === '/ligen' && location.pathname.startsWith('/liga/'));
   return (
-    <div className="min-h-dvh pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-8">
-      <header className="sticky top-0 z-30 bg-(--color-header) pt-[env(safe-area-inset-top)] text-white shadow-md">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2.5">
-          <NavLink to="/" className="flex items-center gap-2 font-bold tracking-tight">
-            <img src={`${BASE}favicon.svg`} alt="" className="h-7 w-7 rounded-md" />
-            <span>Handball VL</span>
+    <div className="app-shell">
+      <a href="#main-content" className="skip-link">Zum Inhalt springen</a>
+      <header className="app-header">
+        <div className="header-inner">
+          <NavLink to="/" className="brand" aria-label="Handball BW – Startseite">
+            <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M8 8v16m16-16v16M8 16h16M12 8h8m-8 16h8" stroke="currentColor" strokeWidth="3" strokeLinecap="square"/><circle cx="16" cy="16" r="4" stroke="currentColor" strokeWidth="2"/></svg></span>
+            <span>HANDBALL<span className="brand-region">BW</span></span>
           </NavLink>
-          {live > 0 && (
-            <NavLink to="/live" aria-label={`${live} Spiele live – zur Konferenz`}>
-              <LiveBadge />
-            </NavLink>
-          )}
-          <nav className="ml-4 hidden gap-1 md:flex">
-            <NavLink to="/" end className={navItem}>
-              Start
-            </NavLink>
-            <NavLink to="/statistik" className={navItem}>
-              Statistik
-            </NavLink>
+          <nav className="desktop-nav" aria-label="Hauptnavigation">
+            {navigation.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `desktop-nav-item ${active(item.to, isActive) ? 'is-active' : ''}`}>
+              {item.label}{item.to === '/live' && live > 0 && <span className="nav-live-count">{live}</span>}
+            </NavLink>)}
           </nav>
-          <div className="ml-auto flex items-center gap-2">
-            <SeasonSelect />
-            <NavLink to="/suche" aria-label="Suche" className="rounded-full p-2 text-white/80 hover:bg-white/10 hover:text-white">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round">
-                <circle cx="11" cy="11" r="6.5" />
-                <path d="m16 16 4.5 4.5" />
-              </svg>
-            </NavLink>
-          </div>
+          <div className="header-season"><span className="season-caption">SAISON</span><SeasonSelect /></div>
         </div>
-        {leagues.length > 0 && (
-          <nav className="scrollbar-none mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 pb-2">
-            {leagues.map((l) => (
-              <NavLink key={l.id} to={`/liga/${l.id}`} className={navItem} title={l.name}>
-                {favoriteLeagues.includes(l.short) && <span aria-label="Favorit">★ </span>}
-                {leagueLabel(l.short)}
-              </NavLink>
-            ))}
-          </nav>
-        )}
       </header>
-
-      {stale && (
-        <div className="bg-(--color-draw)/15 px-4 py-2 text-center text-sm">
-          Die Daten sind vom {new Date(index!.updatedAt).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} Uhr –
-          die automatische Aktualisierung hängt, oder du bist offline.
-        </div>
-      )}
-      {meta?.incomplete && (
-        <div className="bg-(--color-draw)/15 px-4 py-2 text-center text-sm">
-          Für diese Saison sind noch nicht alle Spielberichte geladen – Statistiken sind unvollständig.
-        </div>
-      )}
-
-      <main className="mx-auto max-w-6xl overflow-x-clip px-4 pt-4">
-        <Outlet />
+      <main id="main-content" className="page-shell" tabIndex={-1}>
+        <AppStatus />
+        {stale && <div className="status-notice" role="status">Letzter Datenstand: {updated ?? 'unbekannt'} Uhr. Neue Ergebnisse werden geladen, sobald sie verfügbar sind.</div>}
+        {meta?.incomplete && <div className="status-notice">Spielberichte werden ergänzt. Statistiken können noch unvollständig sein.</div>}
+        {!index && indexPending ? <Loading /> : !index && indexError ? <ErrorBox error={indexError} /> : <Outlet />}
       </main>
-
-      <footer className="mx-auto max-w-6xl px-4 pt-6 pb-4 text-center text-xs text-(--color-ink-3)">
-        Daten: handball4all / BWHV
-        {index && (
-          <>
-            {' · '}Stand {new Date(index.updatedAt).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} Uhr, Live-Stände direkt von h4a
-          </>
-        )}
-        {' · '}Logos: handball.net
+      <footer className="app-footer">
+        <span className="footer-brand">HANDBALL BW</span>
+        <span>Ergebnisse & Spielberichte: handball4all / BWHV · Logos: handball.net</span>
+        {updated && <span>Datenstand {updated} Uhr · Live-Ergebnisse werden automatisch aktualisiert</span>}
       </footer>
-
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-(--color-line) bg-(--color-surface)/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-        <div className="grid grid-cols-3">
-          {[
-            { to: '/', label: 'Start', icon: 'M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z', end: true },
-            { to: leagueHref, label: 'Tabellen', icon: 'M4 5h16M4 10h16M4 15h16M4 20h10', active: location.pathname.startsWith('/liga') },
-            { to: '/statistik', label: 'Statistik', icon: 'M5 20V11M12 20V4M19 20v-6' },
-          ].map((item) => (
-            <NavLink
-              key={item.label}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) =>
-                `flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${isActive || item.active ? 'text-(--color-brand)' : 'text-(--color-ink-3)'}`
-              }
-            >
-              <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <path d={item.icon} />
-              </svg>
-              {item.label}
-            </NavLink>
-          ))}
-        </div>
+      <nav className="mobile-nav" aria-label="Mobile Hauptnavigation">
+        {navigation.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `mobile-nav-item ${active(item.to, isActive) ? 'is-active' : ''}`}>
+          <span className="mobile-nav-icon"><Icon name={item.icon} size={22} />{item.to === '/live' && live > 0 && <span className="mobile-live-dot" />}</span>
+          <span>{item.label}</span>
+        </NavLink>)}
       </nav>
     </div>
   );

@@ -1,34 +1,35 @@
 import { useRef } from 'react';
 import { Link } from 'react-router';
 import type { Game, MatchEvent } from '../../../shared/types.ts';
-import { useLiveGames } from '../api.ts';
+import { useLiveSchedule } from '../api.ts';
 import { TeamLogo } from '../components/TeamLogo.tsx';
-import { Empty, LiveBadge, Section, TextLink, useChanges } from '../components/ui.tsx';
+import { Empty, ErrorBox, Loading, LiveBadge, Section, TextLink, useChanges } from '../components/ui.tsx';
 import { colorStyle, useTeamColors } from '../lib/colors.ts';
 import { formatTime } from '../lib/format.ts';
-import { liveScore, useConference, type LiveGame } from '../lib/liveTicker.ts';
+import { applyTickerResult, liveScore, useConference, type LiveGame } from '../lib/liveTicker.ts';
 
 /** Break between the halves, to place events of different games on one time line. */
 const HALFTIME_MS = 15 * 60_000;
 
 function ScoreCard({ game, ticker }: { game: Game; ticker: LiveGame | undefined }) {
   const score = liveScore(game, ticker) ?? game;
-  const live = game.status === 'live';
+  const status = applyTickerResult(game, ticker).status;
+  const live = status === 'live';
   const goals = useChanges(`${score.homeGoals}:${score.guestGoals}`);
   const team = (id: number | null, name: string, value: number | null) => (
     <div className="flex items-center gap-2">
       <TeamLogo teamId={id} name={name} size={24} />
       <span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
       <span key={goals} className={`tabular inline-block text-lg font-bold ${live ? 'text-(--color-live)' : 'text-(--color-ink-3)'} ${goals ? 'goal-flash' : ''}`}>
-        {live ? (value ?? 0) : '–'}
+        {status !== 'scheduled' ? (value ?? '–') : '–'}
       </span>
     </div>
   );
   return (
-    <Link to={`/spiel/${game.id}`} className="card block p-3 transition hover:border-(--color-brand)">
+    <Link to={`/spiel/${game.id}`} className="live-scorecard card block p-4 transition hover:border-(--color-brand)">
       <div className="mb-2 flex items-center justify-between text-xs text-(--color-ink-3)">
-        {live ? <LiveBadge small /> : <span>Anwurf {formatTime(game.date)} Uhr</span>}
-        <span>{'phase' in score ? score.phase : live ? '' : 'gleich'}</span>
+        {live ? <LiveBadge small /> : status === 'finished' ? <span className="font-semibold">Endstand</span> : <span>Anwurf {formatTime(game.date)} Uhr</span>}
+        <span>{live && 'phase' in score ? score.phase : status === 'scheduled' ? 'gleich' : ''}</span>
       </div>
       <div className="space-y-1.5">
         {team(game.homeId, game.home, score.homeGoals)}
@@ -55,7 +56,7 @@ function FeedRow({ game, event: e, fresh }: { game: Game; event: MatchEvent; fre
           className="h-9 w-1 shrink-0 rounded-full"
           style={{ background: e.side === 'home' ? 'var(--color-home)' : e.side === 'guest' ? 'var(--color-guest)' : 'var(--color-line)' }}
         />
-        <span className="tabular w-8 shrink-0 text-xs text-(--color-ink-3)">{Math.floor(e.t / 60) + 1}'</span>
+        <time className="tabular w-10 shrink-0 text-xs text-(--color-ink-3)" aria-label={`${e.clock} Spielzeit`}>{e.clock}</time>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium">
             {e.type === 'disqualification' ? 'Rote Karte' : e.type === 'sevenGoal' ? '7m-Tor' : 'Tor'} {e.player}
@@ -103,19 +104,24 @@ function Feed({ games, tickers }: { games: Game[]; tickers: Map<number, LiveGame
 
 /** All running games side by side, with the goals of all of them in one ticker. */
 export function LivePage() {
-  const games = useLiveGames();
-  const running = games.filter((g) => g.status === 'live');
-  const tickers = useConference(running) ?? new Map<number, LiveGame>();
+  const { data: games, isPending, error } = useLiveSchedule(true);
+  const candidates = games.filter((g) => g.status === 'live');
+  const tickers = useConference(candidates) ?? new Map<number, LiveGame>();
+  const running = candidates.filter((g) => applyTickerResult(g, tickers.get(g.id)).status === 'live');
+  const upcoming = games.filter((g) => g.status === 'scheduled');
+  const heading = <div className="page-heading"><div><p className="page-eyebrow">Das Spielgeschehen</p><h1 className="page-title">Live-Konferenz</h1><p className="page-subtitle">Laufende Spiele, die nächsten Anwürfe und aktuelle Endstände.</p></div></div>;
+  if (isPending) return <>{heading}<Loading /></>;
+  if (error) return <>{heading}<ErrorBox error={error} /></>;
   if (!games.length) {
     return (
-      <Empty>
+      <>{heading}<Empty>
         Gerade läuft kein Spiel. <TextLink to="/">Zum Spielplan</TextLink>
-      </Empty>
+      </Empty></>
     );
   }
   return (
-    <div className="grid gap-x-6 lg:grid-cols-2">
-      <Section title={running.length ? `${running.length} ${running.length === 1 ? 'Spiel läuft' : 'Spiele laufen'}` : 'Gleich geht es los'}>
+    <>{heading}<div className="grid gap-x-6 lg:grid-cols-2">
+      <Section title={running.length ? `${running.length} ${running.length === 1 ? 'Spiel läuft' : 'Spiele laufen'}` : upcoming.length ? 'Gleich geht es los' : 'Gerade beendet'}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {games.map((g) => (
             <ScoreCard key={g.id} game={g} ticker={tickers.get(g.id)} />
@@ -130,6 +136,6 @@ export function LivePage() {
           </p>
         </Section>
       )}
-    </div>
+    </div></>
   );
 }

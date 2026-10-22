@@ -7,6 +7,7 @@ import {
   num,
   rawGames,
   scoreFields,
+  type OrgResponse,
   type RawGame,
 } from '../shared/h4a.ts';
 import type { Game, League, LeagueRef, Report, Season, Summary, Team } from '../shared/types.ts';
@@ -16,6 +17,7 @@ import { RateLimitedError } from './http.ts';
 import { checkReport, parseReport } from './report.ts';
 import { exists, read, write } from './store.ts';
 import { parseKickoff, weekStart } from './time.ts';
+import { resolveTeamNames } from './teams.ts';
 
 export interface SeasonIndex {
   seasons: Season[];
@@ -34,7 +36,16 @@ export const keys = {
   complete: (season: number) => `s${season}/complete`,
   report: (gameId: number) => `reports/${gameId}`,
   summary: (gameId: number) => `summaries/${gameId}`,
+  reportAttempt: (gameId: number) => `report-attempts/${gameId}`,
 };
+
+let teamLookups = 0;
+
+/** Refresh around kickoff; otherwise retain a recent snapshot to limit source traffic. */
+export function shouldRefreshLeague(league: League | null, now = Date.now()): boolean {
+  if (!league || !Number.isFinite(Date.parse(league.updatedAt)) || now - Date.parse(league.updatedAt) >= config.leagueRefreshMinutes * 60_000) return true;
+  return league.games.some((g) => now >= g.ts - 30 * 60_000 && now <= g.ts + 180 * 60_000);
+}
 
 function normalizeGames(raw: RawGame[], leagueId: number, shortToId: Map<string, number>, teamCount: number): Game[] {
   const games: Game[] = raw.map((g) => {
@@ -98,11 +109,22 @@ export async function syncLeague(season: number, ref: LeagueRef): Promise<League
   const res = await fetchLeague(season, ref.id);
   const content = res.content;
   const known = new Map(previous?.teams.map((t) => [t.id, t.short]) ?? []);
+  const raw = rawGames(res);
+  const resolved = resolveTeamNames(content.teamsList, content.score, raw, known);
 
   const teams: Team[] = [];
   for (const t of content.teamsList) {
     const id = Number(t.teamID);
-    const short = known.get(id) ?? (await lookupShortName(season, ref.id, id).catch(() => null));
+    let short = resolved.get(id) ?? null;
+    if (!short && teamLookups < config.teamLookupLimit) {
+      teamLookups++;
+      try {
+        short = await lookupShortName(season, ref.id, id);
+      } catch (err) {
+        if (err instanceof RateLimitedError) throw err;
+        console.warn(`team name lookup for ${t.teamName} failed:`, (err as Error).message);
+      }
+    }
     teams.push({ id, name: t.teamName, short });
   }
   const shortToId = new Map(teams.filter((t) => t.short).map((t) => [t.short!, t.id]));
@@ -115,7 +137,7 @@ export async function syncLeague(season: number, ref: LeagueRef): Promise<League
     teams,
     table: normalizeTable(content.score),
     tableNotes: content.scoreComments.map((c) => c.replace(/<br\s*\/?>/g, ' ')),
-    games: normalizeGames(rawGames(res), ref.id, shortToId, teams.length),
+    games: normalizeGames(raw, ref.id, shortToId, teams.length),
   };
   // h4a drops the ticker token after the final whistle; keep it until the report is in.
   const tokens = new Map(previous?.games.map((g) => [g.id, g.tickerToken]) ?? []);
@@ -135,45 +157,79 @@ function sanitizeSummary(raw: { text: string; footer: string }): Summary {
   return { title, html };
 }
 
-async function syncGameDetails(game: Game) {
-  if (game.status !== 'finished' || Date.now() < game.ts + REPORT_EARLIEST_MS) return;
+async function syncGameDetails(game: Game, budget: { remaining: number }) {
+  if (game.status !== 'finished' || Date.now() < game.ts + REPORT_EARLIEST_MS) return true;
+  let complete = true;
   if (game.reportId) {
     const existing = await read<Report>(keys.report(game.id));
     const recheck = existing && Date.parse(existing.fetchedAt) < game.ts + REPORT_RECHECK_MS && Date.now() > game.ts + REPORT_RECHECK_MS;
-    if (!existing || recheck) {
-      const pdf = await fetchReportPdf(game.reportId);
-      if (pdf) {
-        const report = await parseReport(pdf, game.id, game.reportId, { home: game.home, guest: game.guest });
-        // "::warning::" makes the line stand out in the summary of the GitHub Actions run.
-        const problems = checkReport(report, game);
-        if (problems.length) console.warn(`::warning::report of game ${game.id} (${game.home} – ${game.guest}) does not add up: ${problems.join('; ')}`);
-        await write(keys.report(game.id), report);
+    if (!existing || recheck || checkReport(existing, game).length) {
+      const attempt = await read<{ at: string }>(keys.reportAttempt(game.id));
+      const recentMiss = attempt && Date.now() - Date.parse(attempt.at) < 6 * 3600_000;
+      if (recentMiss || budget.remaining <= 0) complete = false;
+      else {
+        budget.remaining--;
+        const pdf = await fetchReportPdf(game.reportId);
+        if (pdf) {
+          const report = await parseReport(pdf, game.id, game.reportId, { home: game.home, guest: game.guest });
+          // "::warning::" makes the line stand out in the summary of the GitHub Actions run.
+          const problems = checkReport(report, game);
+          if (problems.length) {
+            console.warn(`::warning::report of game ${game.id} (${game.home} – ${game.guest}) does not add up: ${problems.join('; ')}`);
+            await write(keys.reportAttempt(game.id), { at: new Date().toISOString() });
+            complete = false;
+          } else await write(keys.report(game.id), report);
+        } else {
+          // Unpublished PDFs must not exhaust the next run's backfill allowance.
+          await write(keys.reportAttempt(game.id), { at: new Date().toISOString() });
+          complete = false;
+        }
       }
     }
   }
   if (game.hasSummary && !(await exists(keys.summary(game.id)))) {
-    const robotext = await fetchRobotext(game.id);
-    if (robotext) await write(keys.summary(game.id), sanitizeSummary(robotext));
+    if (budget.remaining <= 0) complete = false;
+    else {
+      budget.remaining--;
+      const robotext = await fetchRobotext(game.id);
+      if (robotext) await write(keys.summary(game.id), sanitizeSummary(robotext));
+      else complete = false;
+    }
   }
+  return complete;
 }
 
-/** Fetches missing reports and summaries, newest games first, until the deadline. Returns false if it ran out of time. */
+/** Give every league a recent report before backfilling older matches in one league. */
+export function detailCandidates(leagues: League[]): Game[] {
+  const queues = leagues.map((l) => l.games.filter((g) => g.status === 'finished').sort((a, b) => b.ts - a.ts));
+  const ordered: Game[] = [];
+  const count = Math.max(0, ...queues.map((q) => q.length));
+  for (let i = 0; i < count; i++) {
+    ordered.push(...queues.flatMap((q) => q[i] ? [q[i]] : []).sort((a, b) => b.ts - a.ts));
+  }
+  return ordered;
+}
+
+/** Fetch missing reports and summaries within both time and request budgets. */
 async function syncDetails(leagues: League[], deadline: number): Promise<boolean> {
-  const games = leagues.flatMap((l) => l.games).sort((a, b) => b.ts - a.ts);
+  const games = detailCandidates(leagues);
+  const budget = { remaining: config.detailRequestLimit };
+  let complete = true;
   for (const game of games) {
-    if (Date.now() > deadline) return false;
+    if (Date.now() > deadline || budget.remaining <= 0) return false;
     try {
-      await syncGameDetails(game);
+      if (!(await syncGameDetails(game, budget))) complete = false;
     } catch (err) {
       if (err instanceof RateLimitedError) throw err;
+      complete = false;
       console.warn(`details for game ${game.id} failed:`, (err as Error).message);
     }
   }
-  return true;
+  return complete;
 }
 
-export async function syncIndex(): Promise<SeasonIndex> {
-  const res = await fetchOrg();
+export async function syncIndex(res?: OrgResponse): Promise<SeasonIndex> {
+  res ??= await fetchOrg();
   const ids = Object.keys(res.menu.period.list).map(Number);
   const current = Number(res.menu.period.selectedID);
   // Only regular seasons ("25/26"), not the summer beach rounds ("S 2026").
@@ -188,13 +244,13 @@ export async function syncIndex(): Promise<SeasonIndex> {
   return index;
 }
 
-async function discoverLeagues(season: number): Promise<LeagueRef[]> {
-  const res = await fetchOrg(season);
+async function discoverLeagues(season: number, res?: OrgResponse): Promise<LeagueRef[]> {
+  res ??= await fetchOrg(season);
   const refs = res.content.classes
     .filter((c) => config.leaguePattern.test(c.gClassSname))
     .map((c) => ({ id: Number(c.gClassID), short: c.gClassSname, name: c.gClassLname }));
   // Keep leagues seen earlier in the season even if h4a's weekly view omits them.
-  const previous = (await read<LeagueRef[]>(keys.leagues(season))) ?? [];
+  const previous = ((await read<LeagueRef[]>(keys.leagues(season))) ?? []).filter((r) => config.leaguePattern.test(r.short));
   const merged = [...refs, ...previous.filter((p) => !refs.some((r) => r.id === p.id))];
   merged.sort((a, b) => a.short.localeCompare(b.short, 'de', { numeric: true }));
   await write(keys.leagues(season), merged);
@@ -223,15 +279,18 @@ export async function syncAll(): Promise<SeasonIndex | null> {
 }
 
 async function syncPass(): Promise<SeasonIndex> {
+  teamLookups = 0;
   const deadline = Date.now() + config.budgetMinutes * 60_000;
-  const index = await syncIndex();
+  const overview = await fetchOrg();
+  const index = await syncIndex(overview);
   for (const { id: season } of index.seasons) {
     const current = season === index.current;
     if (!current && (await exists(keys.complete(season)))) continue;
-    const refs = await discoverLeagues(season);
+    const refs = await discoverLeagues(season, current ? overview : undefined);
     let failed = false;
     for (const ref of refs) {
       try {
+        if (current && !shouldRefreshLeague(await read<League>(keys.league(season, ref.id)))) continue;
         await syncLeague(season, ref);
       } catch (err) {
         if (err instanceof RateLimitedError) throw err;
@@ -241,7 +300,7 @@ async function syncPass(): Promise<SeasonIndex> {
     }
     const leagues = await loadLeagues(season);
     const done = await syncDetails(leagues, deadline);
-    console.log(`season ${season}: ${done ? 'details complete' : 'out of time, continuing next run'}`);
+    console.log(`season ${season}: ${done ? 'details complete' : 'details pending, continuing next run'}`);
     if (!current && done && !failed && leagues.length) await write(keys.complete(season), { at: new Date().toISOString() });
   }
   return index;

@@ -28,15 +28,15 @@ export function StatsPage() {
 
   return (
     <div>
-      <h1 className="mb-4 text-xl font-bold">Statistik</h1>
-      <Chips
-        options={[{ id: 'all' as number | 'all', label: 'Alle Ligen' }, ...(meta?.leagues ?? []).map((l) => ({ id: l.id as number | 'all', label: leagueLabel(l.short) }))]}
-        value={league}
-        onChange={setLeague}
-      />
+      <div className="page-heading"><div><p className="page-eyebrow">Teams & Spieler</p><h1 className="page-title">Statistik</h1><p className="page-subtitle">Torschützen, Mannschaften und die Zahlen hinter den Ergebnissen.</p></div></div>
+      <label className="mb-5 block max-w-md text-xs font-semibold">Wettbewerb
+        <select className="field mt-2" value={league} onChange={(event) => setLeague(event.target.value === 'all' ? 'all' : Number(event.target.value))}>
+          <option value="all">Alle Ligen</option>{(meta?.leagues ?? []).map((ref) => <option key={ref.id} value={ref.id}>{ref.name}</option>)}
+        </select>
+      </label>
       {isLoading ? (
         <Loading />
-      ) : error || !data ? (
+      ) : !data ? (
         <ErrorBox error={error} />
       ) : (
         <>
@@ -51,6 +51,7 @@ export function StatsPage() {
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <input
                 type="search"
+                aria-label="Spieler oder Team in der Statistik suchen"
                 placeholder="Spieler oder Team suchen…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}

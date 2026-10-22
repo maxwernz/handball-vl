@@ -26,7 +26,7 @@ const isGoal = (e: MatchEvent) => e.type === 'goal' || e.type === 'sevenGoal';
 
 const PENALTY_SECONDS = 120;
 
-export function matchStats(report: Pick<Report, 'home' | 'guest' | 'events'>): { home: SideStats; guest: SideStats; flow: GameFlow } {
+export function matchStats(report: Pick<Report, 'home' | 'guest' | 'events'> & { clock?: number }): { home: SideStats; guest: SideStats; flow: GameFlow } {
   const make = (side: 'home' | 'guest'): SideStats => {
     const sheet = report[side];
     const lines = [...sheet.players, ...sheet.officials];
@@ -49,7 +49,9 @@ export function matchStats(report: Pick<Report, 'home' | 'guest' | 'events'>): {
   };
   const home = make('home');
   const guest = make('guest');
-  const duration = Math.max(3600, ...report.events.map((e) => e.t));
+  // A live ticker carries the elapsed clock. Crediting the leader until 60:00
+  // before those minutes have been played creates fictional live statistics.
+  const duration = Math.max(report.clock ?? 3600, ...report.events.map((e) => e.t));
   const flow: GameFlow = { leadChanges: 0, ties: 0, duration };
   let run = { side: null as 'home' | 'guest' | null, length: 0 };
   let leader: 'home' | 'guest' | null = null;

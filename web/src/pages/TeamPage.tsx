@@ -9,7 +9,7 @@ import { PLAYER_VIEWS, PlayerTable, type PlayerView } from '../components/StatTa
 import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Chips, Empty, ErrorBox, FavoriteStar, FormBadges, Loading, Section, StatTile, Tabs, TextLink } from '../components/ui.tsx';
 import { useClubColor } from '../lib/colors.ts';
-import { toggleFavorite, useFavorites } from '../lib/favorites.ts';
+import { toggleFavorite, useFavoriteTeamIds } from '../lib/favorites.ts';
 import { perGame, percent, signed } from '../lib/format.ts';
 import { teamNotes } from '../lib/notes.ts';
 import { rankHistory, remainingSchedules, unitRanks, type UnitRow } from '../lib/standings.ts';
@@ -133,19 +133,20 @@ function StatsTab({ data }: { data: TeamDetail }) {
 export function TeamPage() {
   const id = Number(useParams().id);
   const [params, setParams] = useSearchParams();
-  const tab = (params.get('tab') as Tab) ?? 'games';
+  const requestedTab = params.get('tab') as Tab;
+  const tab = (['games', 'squad', 'stats'] as Tab[]).includes(requestedTab) ? requestedTab : 'games';
   const setTab = (t: Tab) => setParams(t === 'games' ? {} : { tab: t }, { replace: true });
   const swipe = useTabSwipe<Tab>(['games', 'squad', 'stats'], tab, setTab);
   const [playerView, setPlayerView] = useState<PlayerView>('goals');
   const { data, isLoading, error } = useTeam(id);
   const { data: leagueData } = useLeague(data?.league.id);
-  const favorites = useFavorites();
+  const favorites = useFavoriteTeamIds();
   const clubColor = useClubColor(id);
 
   if (isLoading) return <Loading />;
-  if (error || !data) return <ErrorBox error={error} />;
+  if (!data) return <ErrorBox error={error} />;
   const { team, league, tableRow, stats, games } = data;
-  const isFav = favorites.includes(team.name);
+  const isFav = favorites.has(team.id);
   const next = games.find((g) => g.status !== 'finished');
   const played = games.filter((g) => g.status === 'finished').reverse();
   const upcoming = games.filter((g) => g.status !== 'finished');
@@ -173,7 +174,7 @@ export function TeamPage() {
             <FormBadges form={stats.form} />
           </div>
         </div>
-        <FavoriteStar on={isFav} onClick={() => toggleFavorite(team.name)} />
+        <FavoriteStar on={isFav} onClick={() => toggleFavorite(team.name, league.short)} />
       </div>
 
       {notes.length > 0 && (

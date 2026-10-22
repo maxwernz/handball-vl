@@ -14,6 +14,7 @@ import type {
 import { playerKey } from '../shared/players.ts';
 import { read } from './store.ts';
 import { keys, loadLeagues } from './sync.ts';
+import { checkReport } from './report.ts';
 
 export interface SeasonData {
   leagues: League[];
@@ -259,7 +260,8 @@ export async function seasonData(season: number): Promise<SeasonData> {
   const reports = new Map<number, Report>();
   for (const game of finished) {
     const report = await read<Report>(keys.report(game.id));
-    if (report) reports.set(game.id, report);
+    // Keep unverified reports out of published player/team totals and timelines.
+    if (report && !checkReport(report, game).length) reports.set(game.id, report);
   }
   const stamp = `${leagues.map((l) => l.updatedAt).join()}|${[...reports.values()].map((r) => r.fetchedAt).join()}`;
   const cached = cache.get(season);

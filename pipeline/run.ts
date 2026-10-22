@@ -9,4 +9,4 @@ import { keys, syncAll, type SeasonIndex } from './sync.ts';
 const exportOnly = process.argv.includes('--export');
 const index = exportOnly ? await read<SeasonIndex>(keys.index) : await syncAll();
 if (!index) throw new Error('No data yet – run without --export first.');
-await exportAll(index);
+await exportAll(index, { refreshLogos: !exportOnly });

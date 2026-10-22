@@ -25,8 +25,7 @@ export function isoDay(local: string) {
 }
 
 export function relativeDay(local: string) {
-  const today = new Date();
-  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const diff = Math.round((Date.parse(isoDay(local)) - Date.parse(todayIso)) / 86_400_000);
   if (diff === 0) return 'Heute';
   if (diff === 1) return 'Morgen';
@@ -48,7 +47,12 @@ export function signed(n: number) {
 
 /** "Männer-Verbandsliga Staffel 1" -> "Staffel 1"; "M-VL-1-BW" -> "VL 1". */
 export function leagueLabel(short: string) {
-  const m = short.match(/^M-VL-(?:(Auf)-)?(\d+)/);
+  const m = short.match(/^([MF])-(RL|OL|VL|LL)(?:-(Auf))?(?:-(\d+))?(?:-|$)/);
   if (!m) return short;
-  return m[1] ? `Aufstieg ${m[2]}` : `VL ${m[2]}`;
+  return `${m[1]} · ${m[3] ? 'Aufstieg' : m[2]}${m[4] ? ` ${m[4]}` : ''}`;
+}
+
+export function leagueOrder(a: { short: string }, b: { short: string }) {
+  const tier = (short: string) => ['RL', 'OL', 'VL', 'LL'].indexOf(short.split('-')[1]);
+  return tier(a.short) - tier(b.short) || Number(a.short.startsWith('F-')) - Number(b.short.startsWith('F-')) || a.short.localeCompare(b.short, 'de', { numeric: true });
 }

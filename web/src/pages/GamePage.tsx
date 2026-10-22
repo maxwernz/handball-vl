@@ -9,7 +9,7 @@ import { Empty, ErrorBox, FormBadges, LiveBadge, Loading, Section, Tabs, useChan
 import { colorStyle, useTeamColors } from '../lib/colors.ts';
 import { forecast } from '../lib/forecast.ts';
 import { formatLongDay, formatTime } from '../lib/format.ts';
-import { activePenalties, liveScore, useLiveTicker, type LiveGame } from '../lib/liveTicker.ts';
+import { activePenalties, applyTickerResult, liveScore, matchClock, useLiveTicker, type LiveGame } from '../lib/liveTicker.ts';
 import { matchStats } from '../lib/matchStats.ts';
 import { shareGameImage } from '../lib/shareImage.ts';
 import { useTabSwipe } from '../lib/swipe.ts';
@@ -50,7 +50,7 @@ function Scoreboard({ data, ticker }: { data: GameDetail; ticker: LiveGame | und
     );
   };
   return (
-    <div className="card mb-4 overflow-hidden">
+    <div className="match-scoreboard card mb-5 overflow-hidden">
       <div className="bg-(--color-header) px-4 py-2 text-center text-xs text-white/80">
         <Link to={`/liga/${league.id}`} className="hover:underline">
           {league.name}
@@ -65,15 +65,16 @@ function Scoreboard({ data, ticker }: { data: GameDetail; ticker: LiveGame | und
         {team(game.homeId, game.home, data.report?.home.name)}
         <div className="flex w-28 shrink-0 flex-col items-center pt-3 sm:w-36">
           {game.status === 'live' && <LiveBadge />}
-          <div key={goals} className={`tabular mt-1 text-4xl font-extrabold sm:text-5xl ${game.status === 'live' ? 'text-(--color-live)' : ''} ${goals && game.status === 'live' ? 'goal-flash' : ''}`}>
-            {played ? `${game.homeGoals ?? 0}:${game.guestGoals ?? 0}` : formatTime(game.date)}
+          {game.status === 'finished' && <span className="text-xs font-semibold tracking-wide text-(--color-ink-2)">ENDSTAND</span>}
+          <div key={goals} aria-live="polite" aria-atomic="true" className={`tabular mt-1 text-4xl font-extrabold sm:text-5xl ${game.status === 'live' ? 'text-(--color-live)' : ''} ${goals && game.status === 'live' ? 'goal-flash' : ''}`}>
+            {played ? `${game.homeGoals ?? '–'}:${game.guestGoals ?? '–'}` : formatTime(game.date)}
           </div>
-          {game.status === 'finished' && game.homeGoalsHt !== null && (
+          {game.status === 'finished' && game.homeGoalsHt !== null && game.guestGoalsHt !== null && (
             <div className="tabular text-sm text-(--color-ink-2)">
               Halbzeit {game.homeGoalsHt}:{game.guestGoalsHt}
             </div>
           )}
-          {ahead && <div className="text-sm text-(--color-ink-2)">{ahead.phase}</div>}
+          {ahead && game.status === 'live' && <div className="text-sm text-(--color-ink-2)">{ahead.phase}</div>}
           {game.status === 'scheduled' && <div className="text-sm text-(--color-ink-2)">Anwurf</div>}
         </div>
         {team(game.guestId, game.guest, data.report?.guest.name)}
@@ -104,8 +105,8 @@ function Scoreboard({ data, ticker }: { data: GameDetail; ticker: LiveGame | und
       {game.comment && <div className="border-t border-(--color-line) px-4 py-2 text-center text-sm">{game.comment}</div>}
       {game.status === 'live' && (
         <div className="border-t border-(--color-line) bg-(--color-live)/10 px-4 py-2 text-center text-xs">
-          {ticker
-            ? 'Live aus dem h4a-Ticker – aktualisiert sich automatisch alle 20 Sekunden.'
+          {ahead && ticker
+            ? `Letzter Ticker-Eintrag: ${ticker.clock ? `${matchClock(ticker.clock)} Spielzeit` : 'Anwurf'}. Aktualisierung alle 20 Sekunden.`
             : 'Live-Spielstand – aktualisiert sich automatisch alle 20 Sekunden. Der komplette Spielverlauf erscheint mit dem Spielbericht.'}
         </div>
       )}
@@ -127,17 +128,17 @@ const EVENT_LOOK: Record<MatchEvent['type'], { icon: string; className: string; 
 function describe(e: MatchEvent) {
   switch (e.type) {
     case 'goal':
-      return `Tor ${e.player}`;
+      return e.player ? `Tor ${e.player}` : 'Tor';
     case 'sevenGoal':
-      return `7m-Tor ${e.player}`;
+      return e.player ? `7m-Tor ${e.player}` : '7m-Tor';
     case 'sevenMiss':
-      return `7m verworfen – ${e.player}`;
+      return e.player ? `7m verworfen – ${e.player}` : '7m verworfen';
     case 'twoMinutes':
-      return `2 Minuten – ${e.player}`;
+      return e.player ? `2 Minuten – ${e.player}` : '2 Minuten';
     case 'warning':
-      return `Gelbe Karte – ${e.player}`;
+      return e.player ? `Gelbe Karte – ${e.player}` : 'Gelbe Karte';
     case 'disqualification':
-      return `Rote Karte – ${e.player}`;
+      return e.player ? `Rote Karte – ${e.player}` : 'Rote Karte';
     case 'timeout':
       return 'Team-Auszeit';
     default:
@@ -152,6 +153,7 @@ function Ticker({ events: all, home, guest, live }: { events: MatchEvent[]; home
   const indexed = all.map((e, i) => ({ e, i }));
   const events = newestFirst ? indexed.reverse() : indexed;
   let halftimeShown = false;
+  if (!events.length) return <Empty>{live ? 'Noch keine Spielereignisse. Neue Einträge erscheinen hier automatisch.' : 'Für dieses Spiel sind keine Ticker-Ereignisse verfügbar.'}</Empty>;
   return (
     <div>
       <div className="mb-2 flex justify-end">
@@ -175,7 +177,7 @@ function Ticker({ events: all, home, guest, live }: { events: MatchEvent[]; home
                   className="h-7 w-1 shrink-0 rounded-full"
                   style={{ background: e.side === 'home' ? 'var(--color-home)' : e.side === 'guest' ? 'var(--color-guest)' : 'var(--color-line)' }}
                 />
-                <span className="tabular w-9 shrink-0 text-xs text-(--color-ink-3)">{Math.floor(e.t / 60) + 1}'</span>
+                <time className="tabular w-10 shrink-0 text-xs text-(--color-ink-3)" aria-label={`${e.clock} Spielzeit`}>{e.clock}</time>
                 <span className={`w-6 shrink-0 text-center text-xs font-bold ${look.className}`} title={look.label}>
                   {look.icon}
                 </span>
@@ -397,22 +399,24 @@ export function GamePage() {
   const id = Number(useParams().id);
   const { data, isLoading, error } = useGame(id);
   if (isLoading) return <Loading />;
-  if (error || !data) return <ErrorBox error={error} />;
-  return <GameView data={data} />;
+  if (!data) return <ErrorBox error={error} />;
+  return <GameView key={data.game.id} data={data} />;
 }
 
 function GameView({ data }: { data: GameDetail }) {
   const [params, setParams] = useSearchParams();
+  const [shareError, setShareError] = useState('');
   // Until the match report is in, ticker, lineups and stats come from h4a's live ticker.
   const ticker = useLiveTicker(data.report ? null : data.game.tickerToken, data.game.status === 'live');
   const colors = useTeamColors(data.game.homeId, data.game.guestId);
   const { data: meta } = useMeta();
-  const { report, summary, game } = data;
+  const { report, summary } = data;
+  const game = applyTickerResult(data.game, ticker);
   const compare = game.homeId !== null && game.guestId !== null ? [{ id: 'compare' as const, label: 'Vergleich' }] : [];
   const tabs: { id: Tab; label: string }[] = [
     ...(game.status === 'scheduled' ? compare : []),
     ...(!report && ticker ? [
-      { id: 'ticker' as const, label: 'Live-Ticker' },
+      { id: 'ticker' as const, label: game.status === 'live' ? 'Live-Ticker' : 'Ticker' },
       { id: 'lineups' as const, label: 'Aufstellung' },
       { id: 'stats' as const, label: 'Statistik' },
     ] : []),
@@ -426,22 +430,23 @@ function GameView({ data }: { data: GameDetail }) {
   ];
   // The tab from the link, unless this game doesn't have it (yet).
   const active = tabs.find((t) => t.id === params.get('tab'))?.id ?? tabs[0]?.id;
-  const setTab = (t: Tab) => setParams(t === tabs[0].id ? {} : { tab: t }, { replace: true });
+  const setTab = (t: Tab) => setParams(t === tabs[0]?.id ? {} : { tab: t }, { replace: true });
   const swipe = useTabSwipe(tabs.map((t) => t.id), active, setTab);
   const logo = (id: number | null) => (id !== null && meta?.logos[id] ? `${BASE}api/logos/${meta.logos[id]}` : null);
   const share = () =>
     shareGameImage({
-      game: { ...game, ...liveScore(game, ticker) },
+      game,
       league: data.league.name,
       home: report?.home.name ?? game.home,
       guest: report?.guest.name ?? game.guest,
       logos: { home: logo(game.homeId), guest: logo(game.guestId) },
       colors,
       report: report ?? ticker ?? null,
-    });
+    }).catch(() => setShareError('Das Bild konnte gerade nicht erstellt werden. Bitte versuche es erneut.'));
 
   return (
     <div style={colorStyle(colors)}>
+      <h1 className="sr-only">{game.home} gegen {game.guest}</h1>
       <Scoreboard data={data} ticker={report ? undefined : ticker} />
       {tabs.length > 0 && <Tabs tabs={tabs} value={active!} onChange={setTab} />}
 
@@ -455,7 +460,7 @@ function GameView({ data }: { data: GameDetail }) {
         )}
         {active === 'ticker' && report && <Ticker events={report.events} home={data.game.home} guest={data.game.guest} />}
         {active === 'ticker' && !report && ticker && (
-          <Ticker key="live" events={ticker.events} home={data.game.home} guest={data.game.guest} live />
+          <Ticker key="live" events={ticker.events} home={data.game.home} guest={data.game.guest} live={game.status === 'live'} />
         )}
         {active === 'lineups' && report && (
           <div className="grid gap-4 lg:grid-cols-2">
@@ -473,8 +478,10 @@ function GameView({ data }: { data: GameDetail }) {
         {active === 'stats' && (report ?? ticker) && <MatchStatsView report={(report ?? ticker)!} data={data} />}
         {active === 'compare' && game.homeId !== null && game.guestId !== null && <Comparison homeId={game.homeId} guestId={game.guestId} upcoming={game.status === 'scheduled'} />}
 
-        {data.game.status === 'finished' && !report && (
-          <Empty>Der Spielbericht ist noch nicht verfügbar – er wird automatisch geladen, sobald h4a ihn veröffentlicht.</Empty>
+        {game.status === 'finished' && !report && (
+          <p className="mt-4 rounded-xl border border-(--color-line) px-4 py-3 text-sm text-(--color-ink-2)">
+            Das Spiel ist beendet. {ticker ? 'Der Ticker bleibt verfügbar. ' : ''}Der offizielle Spielbericht folgt, sobald er veröffentlicht wird.
+          </p>
         )}
       </div>
 
@@ -488,10 +495,11 @@ function GameView({ data }: { data: GameDetail }) {
 
       <div className="mt-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
         {game.status !== 'scheduled' && (
-          <button onClick={share} className="rounded-lg bg-(--color-brand) px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+          <button onClick={() => { setShareError(''); void share(); }} className="rounded-lg bg-(--color-brand) px-4 py-2 text-sm font-semibold text-(--color-brand-ink) hover:opacity-90">
             Ergebnis als Bild teilen
           </button>
         )}
+        {shareError && <p role="status" className="text-sm text-(--color-ink-2)">{shareError}</p>}
         {data.reportUrl && (
           <a href={data.reportUrl} target="_blank" rel="noreferrer" className="text-sm font-medium text-(--color-brand) hover:underline">
             Original-Spielbericht (PDF) öffnen ↗

@@ -1,6 +1,7 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import { useMeta } from '../api.ts';
 import { storage } from './storage.ts';
+import { hasTeamFavorite, teamFavoriteKey } from '../../../shared/favorites.ts';
 
 // Favorites live on the device (no accounts). Teams are stored by name and leagues
 // by their h4a short name: ids change every season, names don't.
@@ -41,7 +42,13 @@ function listStore(key: string) {
 const teams = listStore('favorites');
 const leagues = listStore('favoriteLeagues');
 
-export const toggleFavorite = teams.toggle;
+export function toggleFavorite(name: string, leagueShort: string) {
+  const current = teams.load();
+  const key = teamFavoriteKey(name, leagueShort);
+  const legacy = !leagueShort.startsWith('F-');
+  if (hasTeamFavorite(current, name, leagueShort)) teams.set(current.filter((value) => value !== key && (!legacy || value !== name)));
+  else teams.set([...current, key]);
+}
 export const toggleFavoriteLeague = leagues.toggle;
 
 export function setFavorites(teamNames: string[], leagueShorts: string[]) {
@@ -63,7 +70,7 @@ export function useFavoriteLeagues(): string[] {
 export function useFavoriteTeamIds(): Set<number> {
   const { data: meta } = useMeta();
   const names = useFavorites();
-  return useMemo(() => new Set((meta?.teams ?? []).filter((t) => names.includes(t.name)).map((t) => t.id)), [meta, names]);
+  return useMemo(() => new Set((meta?.teams ?? []).filter((t) => hasTeamFavorite(names, t.name, meta?.leagues.find((league) => league.id === t.leagueId)?.short ?? '')).map((t) => t.id)), [meta, names]);
 }
 
 /** A link that carries the favorites, to set them up on another device. */

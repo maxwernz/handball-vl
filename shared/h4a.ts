@@ -79,12 +79,19 @@ export function leagueUrl(season: number, leagueId: number, teamId?: number) {
 }
 
 export function rawGames(res: LeagueResponse): RawGame[] {
-  return Array.isArray(res.content.futureGames) ? [] : res.content.futureGames.games;
+  const games = new Map<string, RawGame>();
+  // A completed fixture can move from futureGames into actualGames between
+  // polls; the current round wins if the provider includes it in both lists.
+  for (const group of [res.content.futureGames, res.content.actualGames]) {
+    if (!group || Array.isArray(group) || !Array.isArray(group.games)) continue;
+    for (const game of group.games) if (game?.gID) games.set(String(game.gID), game);
+  }
+  return [...games.values()];
 }
 
 export const num = (value: string | number | null | undefined) => {
   const text = String(value ?? '').trim();
-  return text === '' || Number.isNaN(Number(text)) ? null : Number(text);
+  return text === '' || !Number.isFinite(Number(text)) ? null : Number(text);
 };
 
 /** Before kickoff a game counts as "about to start", after this long it can no longer be running. */
@@ -94,18 +101,22 @@ export const GAME_WINDOW_AFTER_MS = 150 * 60_000;
 const GAME_DURATION_MS = 105 * 60_000;
 
 export function gameStatus(
-  g: Pick<Game, 'ts' | 'homeGoals' | 'guestGoals' | 'liveFlag'>,
+  g: Pick<Game, 'ts' | 'homeGoals' | 'guestGoals' | 'liveFlag'> & Partial<Pick<Game, 'homePoints' | 'guestPoints'>>,
   now = Date.now(),
 ): GameStatus {
+  if (!Number.isFinite(g.ts) || now < g.ts) return 'scheduled';
   const running = now < g.ts + GAME_WINDOW_AFTER_MS;
   if (g.homeGoals === null || g.guestGoals === null) return g.liveFlag && running ? 'live' : 'scheduled';
+  // Awarded competition points and a cleared live flag are stronger evidence
+  // than a guessed wall-clock duration, especially for matches ending early.
+  if (!g.liveFlag && g.homePoints != null && g.guestPoints != null && g.homePoints + g.guestPoints === 2) return 'finished';
   if (now < g.ts + GAME_DURATION_MS || (g.liveFlag && running)) return 'live';
   return 'finished';
 }
 
 /** Whether a game is running or about to start, i.e. worth polling for. */
 export function isActive(g: Game, now = Date.now()) {
-  return g.status === 'live' || (g.status === 'scheduled' && now >= g.ts - GAME_WINDOW_BEFORE_MS && now <= g.ts + GAME_WINDOW_AFTER_MS);
+  return g.status !== 'finished' && Number.isFinite(g.ts) && now >= g.ts - GAME_WINDOW_BEFORE_MS && now < g.ts + GAME_WINDOW_AFTER_MS;
 }
 
 /** The score-related fields of a game, which change while it is played. */

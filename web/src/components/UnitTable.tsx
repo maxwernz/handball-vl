@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import type { TableRow } from '../../../shared/types.ts';
-import { useFavorites } from '../lib/favorites.ts';
+import { useFavoriteTeamIds } from '../lib/favorites.ts';
 import { unitTable, type Unit } from '../lib/standings.ts';
 import { TeamLogo } from './TeamLogo.tsx';
 
@@ -8,7 +8,7 @@ const format = (n: number) => n.toLocaleString('de-DE', { minimumFractionDigits:
 
 /** Attack (goals per game) or defense (goals conceded per game) ranking of a league. */
 export function UnitTable({ rows, unit }: { rows: TableRow[]; unit: Unit }) {
-  const favorites = useFavorites();
+  const favorites = useFavoriteTeamIds();
   const table = unitTable(rows, unit);
   const values = table.map((r) => r.perGame).filter((v): v is number => v !== null);
   // Bars start a little below the weakest value so differences are visible.
@@ -35,7 +35,7 @@ export function UnitTable({ rows, unit }: { rows: TableRow[]; unit: Unit }) {
         </thead>
         <tbody>
           {table.map((r) => {
-            const marked = favorites.includes(r.team);
+            const marked = favorites.has(r.teamId);
             const share = r.perGame === null ? 0 : ((r.perGame - min) / (max - min || 1)) * 100;
             return (
               <tr key={r.teamId} className={`border-b border-(--color-line) last:border-0 ${marked ? 'bg-(--color-brand)/10' : ''}`}>

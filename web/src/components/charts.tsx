@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { MatchEvent } from '../../../shared/types.ts';
+import { matchClock } from '../lib/liveTicker.ts';
 
 function useWidth<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -84,7 +85,8 @@ export function ScoreFlowChart({ events, home, guest }: { events: MatchEvent[]; 
     return before ? `${before.homeScore}:${before.guestScore}` : '0:0';
   };
   const onMove = (clientX: number) => {
-    const rect = ref.current!.getBoundingClientRect();
+    if (!ref.current || innerW <= 0) return;
+    const rect = ref.current.getBoundingClientRect();
     const t = ((clientX - rect.left - m.left) / innerW) * end;
     setHover(t < 0 || t > end ? null : t);
   };
@@ -108,7 +110,7 @@ export function ScoreFlowChart({ events, home, guest }: { events: MatchEvent[]; 
                 </text>
               </g>
             ))}
-            {[0, 10, 20, 30, 40, 50, 60].map((min) => (
+            {Array.from({ length: Math.floor(end / 600) + 1 }, (_, i) => i * 10).map((min) => (
               <text key={min} x={x(min * 60)} y={height - 8} textAnchor="middle" fontSize={11} fill={AXIS}>
                 {min}'
               </text>
@@ -137,7 +139,7 @@ export function ScoreFlowChart({ events, home, guest }: { events: MatchEvent[]; 
         )}
         {hover !== null && (
           <Tooltip x={x(hover)} y={m.top + 10} width={width}>
-            <strong>{Math.floor(hover / 60) + 1}. Minute</strong> · {scoreAt(hover)}
+            <strong>{matchClock(hover)}</strong> · {scoreAt(hover)}
           </Tooltip>
         )}
       </div>

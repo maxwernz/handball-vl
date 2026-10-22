@@ -4,3 +4,5 @@ data
 web/public/api
 *.tmp
 .DS_Store
+test-results
+playwright-report

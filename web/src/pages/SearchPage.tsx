@@ -1,7 +1,7 @@
 import { Link, useSearchParams } from 'react-router';
 import { useMeta, useStats } from '../api.ts';
 import { TeamLogo } from '../components/TeamLogo.tsx';
-import { Empty, Section } from '../components/ui.tsx';
+import { Empty, ErrorBox, Loading, Section } from '../components/ui.tsx';
 import { leagueLabel } from '../lib/format.ts';
 import { matcher } from '../lib/search.ts';
 
@@ -11,8 +11,8 @@ const MAX_RESULTS = 30;
 export function SearchPage() {
   const [params, setParams] = useSearchParams();
   const query = params.get('q') ?? '';
-  const { data: meta } = useMeta();
-  const { data: stats } = useStats(null);
+  const { data: meta, error: metaError } = useMeta();
+  const { data: stats, error: statsError, isPending } = useStats(null);
   const matches = matcher(query);
   const league = (id: number) => leagueLabel(meta?.leagues.find((l) => l.id === id)?.short ?? '');
   const teams = matches ? (meta?.teams ?? []).filter((t) => matches(t.name)) : [];
@@ -21,18 +21,18 @@ export function SearchPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
+      <div className="page-heading"><div><p className="page-eyebrow">Alle Wettbewerbe</p><h1 className="page-title">Suche</h1><p className="page-subtitle">Finde dein Team oder Spieler aus den erfassten Spielberichten.</p></div></div>
       <input
         type="search"
-        autoFocus
         value={query}
         onChange={(e) => setParams(e.target.value ? { q: e.target.value } : {}, { replace: true })}
         placeholder="Team oder Spieler suchen"
         aria-label="Team oder Spieler suchen"
         className="mb-4 w-full rounded-xl border border-(--color-line) bg-(--color-surface) px-4 py-3 text-base outline-none focus:border-(--color-brand)"
       />
-      {!matches ? (
+      {metaError || statsError ? <ErrorBox error={metaError ?? statsError} /> : !matches ? (
         <Empty>Gib einen Namen ein – gesucht wird in allen Teams und Spielern der Saison.</Empty>
-      ) : !teams.length && !players.length ? (
+      ) : isPending && !teams.length ? <Loading /> : !teams.length && !players.length ? (
         <Empty>{stats ? `Nichts gefunden für „${query}“.` : 'Suche …'}</Empty>
       ) : (
         <>

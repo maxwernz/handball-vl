@@ -1,467 +1,158 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { SCORERS_PER_GAME, type Game, type League, type LeagueRef, type Meta } from '../../../shared/types.ts';
-import { useGames, useLeague, useLiveGames, useMeta, useTopScorers } from '../api.ts';
+import type { Game, Meta } from '../../../shared/types.ts';
+import { useGames, useLiveGames, useMeta } from '../api.ts';
 import { GameList } from '../components/GameRow.tsx';
-import { StandingsTable } from '../components/StandingsTable.tsx';
+import { Icon } from '../components/Icon.tsx';
+import { LeagueDirectory } from '../components/LeagueDirectory.tsx';
+import { MatchdayHighlights } from '../components/MatchdayHighlights.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
-import { Chips, Empty, ErrorBox, FormBadges, LiveBadge, Loading, Section, TextLink } from '../components/ui.tsx';
-import {
-  setFavorites,
-  shareLink,
-  toggleFavorite,
-  toggleFavoriteLeague,
-  useFavoriteLeagues,
-  useFavorites,
-  useFavoriteTeamIds,
-} from '../lib/favorites.ts';
-import { formatDay, formatTime, isoDay, leagueLabel, relativeDay } from '../lib/format.ts';
-import { teamNotes } from '../lib/notes.ts';
-import { formOf, tableFor } from '../lib/standings.ts';
-import { storage } from '../lib/storage.ts';
+import { Chips, Empty, ErrorBox, LiveBadge, Loading, Section, TextLink } from '../components/ui.tsx';
+import { setFavorites, shareLink, toggleFavorite, toggleFavoriteLeague, useFavoriteLeagues, useFavorites, useFavoriteTeamIds } from '../lib/favorites.ts';
+import { formatDay, isoDay, leagueLabel, relativeDay } from '../lib/format.ts';
+import { matcher } from '../lib/search.ts';
 
-function mondayOf(offsetWeeks: number) {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + offsetWeeks * 7);
-  return d;
+function berlinToday() {
+  const parts = new Intl.DateTimeFormat('en', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const part = (type: string) => parts.find((p) => p.type === type)!.value;
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+function shiftDay(day: string, by: number) {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + by);
+  return date.toISOString().slice(0, 10);
+}
+function monday(day: string) {
+  return shiftDay(day, -((new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7));
 }
 
-/** Standout results and the best scorer among the finished games of a week. */
-function WeekHighlights({ games }: { games: Game[] }) {
-  const { data: scorers } = useTopScorers();
-  const finished = games.filter((g) => g.status === 'finished' && g.homeGoals !== null && g.guestGoals !== null);
-  if (!finished.length) return null;
-  const diff = (g: Game) => Math.abs(g.homeGoals! - g.guestGoals!);
-  const total = (g: Game) => g.homeGoals! + g.guestGoals!;
-  const best = (score: (g: Game) => number) => finished.reduce((a, b) => (score(b) > score(a) ? b : a));
-  const biggest = best(diff);
-  // Among equally close games the one with more goals was the bigger spectacle.
-  const closest = best((g) => -diff(g) * 1000 + total(g));
-  const mostGoals = best(total);
-  // Every game lists its best scorers, so the best of the week are among them.
-  const team = finished
-    .flatMap((game) => (scorers?.[game.id] ?? []).map((scorer) => ({ game, scorer })))
-    .sort((a, b) => b.scorer.goals - a.scorer.goals)
-    .slice(0, SCORERS_PER_GAME);
-  const row = (label: string, value: string, g: Game) => (
-    <div className="py-2 text-sm">
-      <div className="text-xs text-(--color-ink-3)">
-        {label} · {value}
+function MatchCenter({ meta, mine }: { meta: Meta; mine: ((game: Game) => boolean) | null }) {
+  const { data: games, isPending, error } = useGames();
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState('all');
+  const [league, setLeague] = useState('all');
+  const [onlyMine, setOnlyMine] = useState(false);
+  const [limit, setLimit] = useState(40);
+  const today = berlinToday();
+  const currentWeek = monday(today);
+  const defaultWeek = useMemo(() => {
+    if (!games?.length || games.some((game) => isoDay(game.date) >= currentWeek && isoDay(game.date) < shiftDay(currentWeek, 7))) return currentWeek;
+    const sorted = [...games].sort((a, b) => a.ts - b.ts);
+    const next = sorted.find((game) => isoDay(game.date) >= today);
+    return monday(isoDay((next ?? sorted.at(-1)!).date));
+  }, [games, currentWeek, today]);
+  const week = selectedWeek ?? defaultWeek;
+  const dates = Array.from({ length: 7 }, (_, index) => shiftDay(week, index));
+  const weeklyGames = useMemo(() => (games ?? []).filter((game) => isoDay(game.date) >= week && isoDay(game.date) < shiftDay(week, 7)).sort((a, b) => a.ts - b.ts || a.leagueId - b.leagueId), [games, week]);
+  const filtered = weeklyGames.filter((game) => (league === 'all' || String(game.leagueId) === league) && (!onlyMine || !mine || mine(game)));
+  const visible = filtered.filter((game) => selectedDay === 'all' || isoDay(game.date) === selectedDay);
+  const groups = new Map<string, Game[]>();
+  for (const game of visible.slice(0, limit)) {
+    const day = isoDay(game.date);
+    groups.set(day, [...(groups.get(day) ?? []), game]);
+  }
+  const changeWeek = (next: string) => { setSelectedWeek(next); setSelectedDay('all'); setLimit(40); };
+  const tags = new Map(meta.leagues.map((ref) => [ref.id, leagueLabel(ref.short)]));
+  return <section aria-label="Spielplan und Ergebnisse">
+    <div className="score-toolbar">
+      <div className="week-navigation">
+        <button className="icon-button" onClick={() => changeWeek(shiftDay(week, -7))} aria-label="Vorherige Woche"><Icon name="chevron-left" size={18} /></button>
+        <span className="week-label tabular">{formatDay(week).slice(3)} – {formatDay(dates[6]).slice(3)}</span>
+        <button className="icon-button" onClick={() => changeWeek(shiftDay(week, 7))} aria-label="Nächste Woche"><Icon name="chevron-right" size={18} /></button>
       </div>
-      <Link to={`/spiel/${g.id}`} className="block truncate hover:underline">
-        <span className="tabular font-semibold">
-          {g.homeGoals}:{g.guestGoals}
-        </span>{' '}
-        {g.home} – {g.guest}
-      </Link>
+      <select className="field score-filter" aria-label="Spiele nach Liga filtern" value={league} onChange={(event) => { setLeague(event.target.value); setLimit(40); }}>
+        <option value="all">Alle Ligen</option>{meta.leagues.map((ref) => <option key={ref.id} value={ref.id}>{ref.name}</option>)}
+      </select>
     </div>
-  );
-  return (
-    <div className="card mt-4 divide-y divide-(--color-line) px-4 py-2">
-      <h3 className="py-2 font-semibold">Höhepunkte der Woche</h3>
-      {team.length > 0 && (
-        <div className="py-2 text-sm">
-          <div className="mb-1 text-xs text-(--color-ink-3)">Team der Woche · die besten Torschützen</div>
-          <ol className="space-y-1.5">
-            {team.map(({ game, scorer }) => (
-              <li key={`${game.id}-${scorer.key}`} className="flex min-w-0 items-center gap-2">
-                <span className="tabular w-6 shrink-0 text-right font-bold">{scorer.goals}</span>
-                <TeamLogo teamId={scorer.teamId} name={scorer.team} size={20} />
-                <Link to={`/spieler/${scorer.key}`} className="truncate hover:underline">
-                  {scorer.name}
-                </Link>
-                <Link to={`/spiel/${game.id}`} className="ml-auto min-w-0 shrink truncate text-xs text-(--color-ink-3) hover:underline">
-                  gegen {game.homeId === scorer.teamId ? game.guest : game.home}
-                </Link>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-      {row('Höchster Sieg', `${diff(biggest)} Tore Differenz`, biggest)}
-      {row('Knappstes Spiel', diff(closest) ? `${diff(closest)} ${diff(closest) === 1 ? 'Tor' : 'Tore'} Differenz` : 'Unentschieden', closest)}
-      {row('Torreichstes Spiel', `${total(mostGoals)} Tore`, mostGoals)}
+    <div className="date-strip" aria-label="Spieltag auswählen">
+      <button className={`date-button ${selectedDay === 'all' ? 'is-selected' : ''}`} aria-pressed={selectedDay === 'all'} onClick={() => { setSelectedDay('all'); setLimit(40); }}><span>Woche</span><strong>Alle</strong><span className="date-dot" /></button>
+      {dates.map((day, index) => <button key={day} className={`date-button ${selectedDay === day ? 'is-selected' : ''} ${day === today ? 'is-today' : ''}`} aria-pressed={selectedDay === day} aria-label={`${formatDay(day)}${day === today ? ', heute' : ''}`} onClick={() => { setSelectedDay(day); setLimit(40); }}><span>{['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][index]}</span><strong>{day.slice(8)}</strong><span className="date-dot" style={{ visibility: filtered.some((game) => isoDay(game.date) === day) ? 'visible' : 'hidden' }} /></button>)}
     </div>
-  );
-}
-
-type GameFilter = 'mine' | 'all';
-
-function WeekGames({ leagues, mine }: { leagues: LeagueRef[]; mine: ((g: Game) => boolean) | null }) {
-  const [offset, setOffset] = useState(0);
-  const [filter, setFilterState] = useState<GameFilter>(() => (storage.get('gameFilter') === 'all' ? 'all' : 'mine'));
-  const setFilter = (f: GameFilter) => {
-    storage.set('gameFilter', f);
-    setFilterState(f);
-  };
-  const start = mondayOf(offset);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 7);
-  const { data: games, isLoading, error } = useGames(start.toISOString(), end.toISOString());
-  const tag = useMemo(() => {
-    const byId = new Map(leagues.map((l) => [l.id, leagueLabel(l.short)]));
-    return (g: Game) => byId.get(g.leagueId) ?? '';
-  }, [leagues]);
-  const onlyMine = mine !== null && filter === 'mine';
-
-  const byDay = useMemo(() => {
-    const map = new Map<string, Game[]>();
-    for (const g of games ?? []) {
-      if (onlyMine && !mine!(g)) continue;
-      map.set(isoDay(g.date), [...(map.get(isoDay(g.date)) ?? []), g]);
-    }
-    return [...map];
-  }, [games, onlyMine, mine]);
-
-  const title = offset === 0 ? 'Diese Woche' : offset === -1 ? 'Letzte Woche' : offset === 1 ? 'Nächste Woche' : `Woche ab ${formatDay(start.toISOString().slice(0, 10))}`;
-  const arrow = 'rounded-lg border border-(--color-line) bg-(--color-surface) px-3 py-1.5 text-sm hover:bg-(--color-surface-2)';
-
-  return (
-    <Section
-      title={title}
-      action={
-        <div className="flex gap-1.5">
-          <button className={arrow} onClick={() => setOffset((o) => o - 1)} aria-label="Vorherige Woche">
-            ←
-          </button>
-          {offset !== 0 && (
-            <button className={arrow} onClick={() => setOffset(0)}>
-              Heute
-            </button>
-          )}
-          <button className={arrow} onClick={() => setOffset((o) => o + 1)} aria-label="Nächste Woche">
-            →
-          </button>
-        </div>
-      }
-    >
-      {mine && (
-        <Chips
-          options={[
-            { id: 'mine' as GameFilter, label: 'Meine Spiele' },
-            { id: 'all' as GameFilter, label: 'Alle Spiele' },
-          ]}
-          value={filter}
-          onChange={setFilter}
-        />
-      )}
-      {isLoading ? (
-        <Loading />
-      ) : error ? (
-        <ErrorBox error={error} />
-      ) : byDay.length === 0 ? (
-        <Empty>
-          {onlyMine && games?.length ? (
-            <>
-              Diese Woche spielen deine Teams und Ligen nicht.{' '}
-              <button className="font-medium text-(--color-brand) hover:underline" onClick={() => setFilter('all')}>
-                Alle Spiele zeigen
-              </button>
-            </>
-          ) : (
-            'In dieser Woche finden keine Spiele statt.'
-          )}
-        </Empty>
-      ) : (
-        <div className="space-y-4">
-          {byDay.map(([day, list]) => (
-            <div key={day}>
-              <div className="mb-1.5 px-1 text-sm font-semibold">{relativeDay(list[0].date)}</div>
-              <GameList games={list} showDate={false} leagueTag={tag} />
-            </div>
-          ))}
-          <WeekHighlights games={byDay.flatMap(([, list]) => list)} />
-        </div>
-      )}
-    </Section>
-  );
-}
-
-function FavoriteCard({ league, team }: { league: League; team: string }) {
-  const t = league.teams.find((x) => x.name === team)!;
-  const row = league.table.find((r) => r.teamId === t.id);
-  const games = league.games.filter((g) => g.homeId === t.id || g.guestId === t.id);
-  const last = games.filter((g) => g.status === 'finished').at(-1);
-  const next = games.find((g) => g.status !== 'finished');
-  const opponent = (g: Game) => (g.homeId === t.id ? `vs. ${g.guest}` : `@ ${g.home}`);
-  return (
-    <Link to={`/team/${t.id}`} className="card block p-4 transition hover:border-(--color-brand)">
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-(--color-ink-3)">
+      <span aria-live="polite">{isPending ? 'Spielplan wird geladen …' : `${visible.length} ${visible.length === 1 ? 'Spiel' : 'Spiele'}${week === currentWeek ? ' diese Woche' : ''}`}</span>
       <div className="flex items-center gap-3">
-        <TeamLogo teamId={t.id} name={t.name} size={44} />
-        <div className="min-w-0">
-          <div className="truncate font-semibold">{t.name}</div>
-          <div className="text-sm text-(--color-ink-2)">
-            {leagueLabel(league.short)} · Platz {row?.rank ?? '–'} · {row?.pointsPlus ?? 0}:{row?.pointsMinus ?? 0} Punkte
-          </div>
-        </div>
+        {week !== currentWeek && <button className="text-action" onClick={() => changeWeek(currentWeek)}>Heute</button>}
+        {mine && <button className={`text-action ${onlyMine ? '' : 'text-(--color-ink-2)'}`} aria-pressed={onlyMine} onClick={() => { setOnlyMine(!onlyMine); setLimit(40); }}><Icon name="star" size={15} />{onlyMine ? 'Meine Spiele' : 'Nur Favoriten'}</button>}
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-        <div>
-          <div className="text-xs text-(--color-ink-3)">Letztes Spiel</div>
-          {last ? (
-            <div className="truncate">
-              <span className="tabular font-semibold">
-                {last.homeGoals}:{last.guestGoals}
-              </span>{' '}
-              {opponent(last)}
-            </div>
-          ) : (
-            '–'
-          )}
-        </div>
-        <div>
-          <div className="text-xs text-(--color-ink-3)">Nächstes Spiel</div>
-          {next ? (
-            <div className="truncate">
-              {next.status === 'live' ? 'LIVE' : `${formatDay(next.date)} ${formatTime(next.date)}`} {opponent(next)}
-            </div>
-          ) : (
-            '–'
-          )}
-        </div>
-      </div>
-      <div className="mt-3 flex items-center gap-3">
-        <FormBadges form={formOf(league.games, t.id)} />
-        <span className="min-w-0 truncate text-xs text-(--color-ink-2)">{teamNotes(league.games, t.id)[0]}</span>
-      </div>
-    </Link>
-  );
-}
-
-function FavoriteCards({ league: ref, favorites }: { league: LeagueRef; favorites: string[] }) {
-  const { data: league } = useLeague(ref.id);
-  if (!league) return <div className="card h-36 animate-pulse" />;
-  return (
-    <>
-      {league.teams
-        .filter((t) => favorites.includes(t.name))
-        .map((t) => (
-          <FavoriteCard key={t.id} league={league} team={t.name} />
-        ))}
-    </>
-  );
-}
-
-function LeagueOverview({ league: ref, full }: { league: LeagueRef; full: boolean }) {
-  const { data: league } = useLeague(ref.id);
-  if (!league) return <div className="card h-64 animate-pulse" />;
-  const table = tableFor(league, 'all');
-  return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between px-1">
-        <Link to={`/liga/${league.id}`} className="font-semibold hover:underline">
-          {league.name}
-        </Link>
-        <TextLink to={`/liga/${league.id}`}>{full ? 'Details →' : 'Tabelle →'}</TextLink>
-      </div>
-      <StandingsTable league={league} rows={full ? table : table.slice(0, 5)} compact />
     </div>
-  );
+    {isPending ? <Loading /> : error ? <ErrorBox error={error} /> : !visible.length ? <Empty><Icon name="calendar" size={28} className="mx-auto mb-3 text-(--color-ink-3)" /><p className="font-semibold text-(--color-ink)">Keine Spiele in dieser Auswahl</p><p className="mt-2">Wähle einen anderen Tag, eine andere Woche oder Liga.</p>{(selectedDay !== 'all' || league !== 'all' || onlyMine) && <button className="text-action mt-3" onClick={() => { setSelectedDay('all'); setLeague('all'); setOnlyMine(false); }}>Filter zurücksetzen<Icon name="arrow" size={16} /></button>}</Empty> : <>
+      {[...groups].map(([day, list]) => <div key={day}><h2 className="day-heading">{relativeDay(day)}<span>{filtered.filter((game) => isoDay(game.date) === day).length} Spiele</span></h2><GameList games={list} showDate={false} leagueTag={(game) => tags.get(game.leagueId) ?? ''} /></div>)}
+      {visible.length > limit && <button className="button-secondary mt-4 w-full" onClick={() => setLimit((value) => value + 40)}>Weitere {Math.min(40, visible.length - limit)} Spiele anzeigen<Icon name="chevron-right" size={15} /></button>}
+      <MatchdayHighlights games={visible} />
+    </>}
+  </section>;
 }
 
-const pill = (on: boolean) =>
-  `inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition ${on ? 'border-(--color-brand) bg-(--color-brand) text-white' : 'border-(--color-line) bg-(--color-surface) text-(--color-ink-2) hover:text-(--color-ink)'}`;
-
-/** Pick favorite leagues and teams; shown on first visit and via "Favoriten bearbeiten". */
 function FavoritesSetup({ meta, onDone }: { meta: Meta; onDone: () => void }) {
   const favorites = useFavorites();
+  const selectedTeams = useFavoriteTeamIds();
   const favoriteLeagues = useFavoriteLeagues();
-  const chosen = meta.leagues.filter((l) => favoriteLeagues.includes(l.short));
-  const shown = chosen.length ? chosen : meta.leagues;
-  return (
-    <div className="card mb-6 p-4">
-      <h2 className="text-lg font-bold">Deine Startseite</h2>
-      <p className="mt-1 text-sm text-(--color-ink-2)">
-        Wähle deine Ligen und Teams – sie erscheinen dann hier oben, und „Meine Spiele“ zeigt nur ihre Spiele. Die Auswahl wird nur auf diesem Gerät gespeichert.
-      </p>
-      <h3 className="mt-4 mb-2 text-sm font-semibold">Ligen</h3>
-      <div className="flex flex-wrap gap-2">
-        {meta.leagues.map((l) => (
-          <button key={l.id} className={pill(favoriteLeagues.includes(l.short))} aria-pressed={favoriteLeagues.includes(l.short)} onClick={() => toggleFavoriteLeague(l.short)}>
-            {l.name}
-          </button>
-        ))}
-      </div>
-      <h3 className="mt-4 mb-2 text-sm font-semibold">Teams</h3>
-      <div className="space-y-3">
-        {shown.map((l) => (
-          <div key={l.id}>
-            {shown.length > 1 && <div className="mb-1.5 text-xs text-(--color-ink-3)">{l.name}</div>}
-            <div className="flex flex-wrap gap-2">
-              {(meta.teams ?? [])
-                .filter((t) => t.leagueId === l.id)
-                .sort((a, b) => a.name.localeCompare(b.name, 'de'))
-                .map((t) => (
-                  <button key={t.id} className={pill(favorites.includes(t.name))} aria-pressed={favorites.includes(t.name)} onClick={() => toggleFavorite(t.name)}>
-                    <TeamLogo teamId={t.id} name={t.name} size={18} />
-                    {t.name}
-                  </button>
-                ))}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 flex justify-end">
-        <button className="rounded-lg bg-(--color-brand) px-4 py-2 text-sm font-semibold text-white hover:opacity-90" onClick={onDone}>
-          Fertig
-        </button>
-      </div>
+  const [kind, setKind] = useState<'teams' | 'leagues'>('teams');
+  const [query, setQuery] = useState('');
+  const [league, setLeague] = useState('all');
+  const matches = matcher(query);
+  const teams = (meta.teams ?? []).filter((team) => (!matches || matches(team.name)) && (league === 'all' || String(team.leagueId) === league)).sort((a, b) => Number(selectedTeams.has(b.id)) - Number(selectedTeams.has(a.id)) || a.name.localeCompare(b.name, 'de'));
+  const leagues = meta.leagues.filter((ref) => !matches || matches(`${ref.name} ${ref.short}`));
+  return <section className="favorite-editor" aria-labelledby="favorites-heading">
+    <div className="section-heading"><h2 id="favorites-heading">Deine Favoriten</h2><button className="icon-button" onClick={onDone} aria-label="Favoritenauswahl schließen"><Icon name="close" size={17} /></button></div>
+    <p className="mb-4 text-xs leading-relaxed text-(--color-ink-2)">Teams und Ligen auswählen. Deine Auswahl wird auf diesem Gerät gespeichert.</p>
+    <Chips options={[{ id: 'teams', label: `Teams (${favorites.length})` }, { id: 'leagues', label: `Ligen (${favoriteLeagues.length})` }]} value={kind} onChange={setKind} />
+    <div className="flex flex-wrap gap-2"><div className="search-field min-w-40 flex-1"><Icon name="search" size={17} /><input className="field" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={kind === 'teams' ? 'Team suchen' : 'Liga suchen'} aria-label={kind === 'teams' ? 'Favoritenteam suchen' : 'Favoritenliga suchen'} /></div>{kind === 'teams' && <select className="field min-w-40 flex-1" value={league} aria-label="Teams nach Liga filtern" onChange={(event) => setLeague(event.target.value)}><option value="all">Alle Ligen</option>{meta.leagues.map((ref) => <option key={ref.id} value={ref.id}>{ref.name}</option>)}</select>}</div>
+    <div className="favorite-results">{kind === 'teams' ? teams.slice(0, 40).map((team) => <button className="favorite-option" key={team.id} aria-pressed={selectedTeams.has(team.id)} onClick={() => toggleFavorite(team.name, meta.leagues.find((ref) => ref.id === team.leagueId)?.short ?? '')}><TeamLogo teamId={team.id} name={team.name} size={25} /><span className="min-w-0 flex-1"><span className="block font-medium">{team.name}</span><span className="mt-0.5 block text-[10px] text-(--color-ink-3)">{meta.leagues.find((ref) => ref.id === team.leagueId)?.name}</span></span><span className="favorite-check">{selectedTeams.has(team.id) && <Icon name="check" size={14} />}</span></button>) : leagues.map((ref) => <button className="favorite-option" key={ref.id} aria-pressed={favoriteLeagues.includes(ref.short)} onClick={() => toggleFavoriteLeague(ref.short)}><Icon name="leagues" size={20} /><span>{ref.name}</span><span className="favorite-check">{favoriteLeagues.includes(ref.short) && <Icon name="check" size={14} />}</span></button>)}
+      {(kind === 'teams' ? teams.length : leagues.length) === 0 && <p className="py-6 text-center text-xs text-(--color-ink-2)">Keine Treffer für diese Auswahl.</p>}
     </div>
-  );
+    {kind === 'teams' && teams.length > 40 && <p className="mt-3 text-xs text-(--color-ink-3)">{teams.length} Teams gefunden. Grenze die Auswahl mit Suche oder Liga ein.</p>}
+    <div className="mt-4 flex justify-end"><button className="button-primary" onClick={onDone}><Icon name="check" size={15} />Fertig</button></div>
+  </section>;
 }
 
-/** Offers to take over favorites from a shared link (?team=…&liga=…). */
 function ImportBanner({ onImported }: { onImported: () => void }) {
   const [params, setParams] = useSearchParams();
   const teams = params.getAll('team');
   const leagues = params.getAll('liga');
   if (!teams.length && !leagues.length) return null;
-  const parts = [teams.length && `${teams.length} ${teams.length === 1 ? 'Team' : 'Teams'}`, leagues.length && `${leagues.length} ${leagues.length === 1 ? 'Liga' : 'Ligen'}`].filter(Boolean);
-  return (
-    <div className="card mb-4 flex flex-wrap items-center gap-3 border-(--color-brand) p-4 text-sm">
-      <span className="w-full sm:w-auto sm:flex-1">Favoriten aus dem Link übernehmen ({parts.join(', ')})? Deine bisherige Auswahl wird ersetzt.</span>
-      <button className="ml-auto rounded-lg px-3 py-1.5 text-(--color-ink-2) hover:bg-(--color-surface-2)" onClick={() => setParams({}, { replace: true })}>
-        Nein
-      </button>
-      <button
-        className="rounded-lg bg-(--color-brand) px-3 py-1.5 font-semibold text-white hover:opacity-90"
-        onClick={() => {
-          setFavorites(teams, leagues);
-          storage.set('setupDone', '1');
-          setParams({}, { replace: true });
-          onImported();
-        }}
-      >
-        Übernehmen
-      </button>
-    </div>
-  );
+  return <div className="card mb-5 flex flex-wrap items-center gap-3 p-4 text-sm"><span className="min-w-0 flex-1">{teams.length} Teams und {leagues.length} Ligen aus dem Link als Favoriten übernehmen? Deine bisherige Auswahl wird ersetzt.</span><button className="button-secondary" onClick={() => setParams({}, { replace: true })}>Verwerfen</button><button className="button-primary" onClick={() => { setFavorites(teams, leagues); setParams({}, { replace: true }); onImported(); }}>Übernehmen</button></div>;
 }
-
 function ShareButton({ teams, leagues }: { teams: string[]; leagues: string[] }) {
-  const [copied, setCopied] = useState(false);
-  const share = async () => {
+  const [message, setMessage] = useState('Favoriten übertragen');
+  return <button className="text-action" onClick={async () => {
     const url = shareLink(teams, leagues);
     try {
       if (navigator.share) await navigator.share({ title: 'Meine Handball-Favoriten', url });
-      else {
-        await navigator.clipboard.writeText(url);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }
-    } catch {
-      /* cancelled */
-    }
-  };
-  return (
-    <button className="text-sm font-medium text-(--color-brand) hover:underline" onClick={share}>
-      {copied ? 'Link kopiert ✓' : 'Auf anderes Gerät übertragen'}
-    </button>
-  );
+      else { await navigator.clipboard.writeText(url); setMessage('Link kopiert'); }
+    } catch (error) { if (!(error instanceof Error && error.name === 'AbortError')) setMessage('Teilen gerade nicht möglich'); }
+  }}><Icon name="share" size={15} />{message}</button>;
 }
 
 export function HomePage() {
-  const { data: meta, isLoading, error } = useMeta();
+  const { data: meta, isPending, error } = useMeta();
   const favorites = useFavorites();
   const favoriteLeagues = useFavoriteLeagues();
   const favoriteIds = useFavoriteTeamIds();
-  const live = useLiveGames().filter((g) => g.status === 'live').length;
-  // Decided once, so the setup stays open while favorites are being picked.
-  const [editing, setEditing] = useState(() => storage.get('setupDone') !== '1' && !favorites.length && !favoriteLeagues.length);
-
-  const myLeagues = useMemo(() => (meta?.leagues ?? []).filter((l) => favoriteLeagues.includes(l.short)), [meta, favoriteLeagues]);
+  const live = useLiveGames().filter((game) => game.status === 'live').length;
+  const [editing, setEditing] = useState(false);
+  const myLeagues = useMemo(() => (meta?.leagues ?? []).filter((league) => favoriteLeagues.includes(league.short)), [meta, favoriteLeagues]);
   const mine = useMemo(() => {
     if (!favoriteIds.size && !myLeagues.length) return null;
-    const leagueIds = new Set(myLeagues.map((l) => l.id));
-    return (g: Game) => leagueIds.has(g.leagueId) || favoriteIds.has(g.homeId ?? -1) || favoriteIds.has(g.guestId ?? -1);
+    const ids = new Set(myLeagues.map((league) => league.id));
+    return (game: Game) => ids.has(game.leagueId) || favoriteIds.has(game.homeId ?? -1) || favoriteIds.has(game.guestId ?? -1);
   }, [favoriteIds, myLeagues]);
-
-  if (isLoading) return <Loading />;
-  if (error || !meta) return <ErrorBox error={error} />;
-  if (!meta.leagues.length) return <Empty>Noch keine Ligen geladen – der Server synchronisiert gerade.</Empty>;
-
-  const hasFavorites = favoriteIds.size > 0 || myLeagues.length > 0;
-  const showSetup = editing;
-  const teamLeagues = meta.leagues.filter((l) => (meta.teams ?? []).some((t) => t.leagueId === l.id && favoriteIds.has(t.id)));
-  const otherLeagues = meta.leagues.filter((l) => !myLeagues.includes(l));
-  const edit = () => {
-    setEditing(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  return (
-    <div>
-      <ImportBanner onImported={() => setEditing(false)} />
-      {live > 0 && (
-        <Link to="/live" className="card mb-4 flex items-center gap-3 border-(--color-live)/40 px-4 py-3 text-sm transition hover:border-(--color-live)">
-          <LiveBadge />
-          <span className="flex-1 font-medium">
-            {live} {live === 1 ? 'Spiel läuft' : 'Spiele laufen'} – zur Live-Konferenz
-          </span>
-          <span className="text-(--color-ink-3)">→</span>
-        </Link>
-      )}
-      {showSetup && (
-        <FavoritesSetup
-          meta={meta}
-          onDone={() => {
-            storage.set('setupDone', '1');
-            setEditing(false);
-          }}
-        />
-      )}
-      <div className="grid gap-x-6 lg:grid-cols-[1.25fr_1fr]">
-        <div className="min-w-0">
-          <WeekGames leagues={meta.leagues} mine={mine} />
-        </div>
-        <div className="min-w-0">
-          {teamLeagues.length > 0 && (
-            <Section title="Meine Teams">
-              <div className="space-y-3">
-                {teamLeagues.map((l) => (
-                  <FavoriteCards key={l.id} league={l} favorites={favorites} />
-                ))}
-              </div>
-            </Section>
-          )}
-          <Section title={myLeagues.length ? (myLeagues.length > 1 ? 'Meine Ligen' : 'Meine Liga') : 'Ligen'}>
-            {!hasFavorites && !showSetup && (
-              <div className="mb-3 rounded-xl bg-(--color-brand)/10 px-3 py-2 text-sm text-(--color-ink-2)">
-                Tipp: Lege deine Teams und Ligen fest, dann stehen sie hier ganz oben.{' '}
-                <button className="font-medium text-(--color-brand) hover:underline" onClick={edit}>
-                  Jetzt auswählen
-                </button>
-              </div>
-            )}
-            <div className="space-y-5">
-              {(myLeagues.length ? myLeagues : meta.leagues).map((l) => (
-                <LeagueOverview key={l.id} league={l} full={myLeagues.length > 0} />
-              ))}
-            </div>
-          </Section>
-          {myLeagues.length > 0 && otherLeagues.length > 0 && (
-            <Section title="Weitere Ligen">
-              <div className="card divide-y divide-(--color-line) overflow-hidden">
-                {otherLeagues.map((l) => (
-                  <Link key={l.id} to={`/liga/${l.id}`} className="flex items-center justify-between px-4 py-3 text-sm hover:bg-(--color-surface-2)">
-                    {l.name}
-                    <span className="text-(--color-ink-3)">→</span>
-                  </Link>
-                ))}
-              </div>
-            </Section>
-          )}
-          {hasFavorites && !showSetup && (
-            <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-              <button className="text-sm font-medium text-(--color-brand) hover:underline" onClick={edit}>
-                Favoriten bearbeiten
-              </button>
-              <ShareButton teams={favorites} leagues={favoriteLeagues} />
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+  if (isPending) return <Loading />;
+  if (!meta) return <ErrorBox error={error} />;
+  if (!meta.leagues.length) return <Empty>Der Spielplan für diese Saison wird vorbereitet. Wähle oben eine andere Saison.</Empty>;
+  const myTeams = (meta.teams ?? []).filter((team) => favoriteIds.has(team.id));
+  const featuredLeagues = [...myLeagues, ...meta.leagues.filter((league) => !favoriteLeagues.includes(league.short))].slice(0, 5);
+  return <div>
+    <div className="page-heading"><div><p className="page-eyebrow">Baden-Württemberg · {meta.leagues.length} Ligen</p><h1 className="page-title">Dein Spieltag.</h1><p className="page-subtitle">Ergebnisse, Spielpläne und alles, was auf dem Feld passiert.</p></div><button className="button-secondary" onClick={() => setEditing(!editing)} aria-expanded={editing} aria-label="Favoriten bearbeiten"><Icon name="settings" size={17} /><span className="button-label">Favoriten</span></button></div>
+    <ImportBanner onImported={() => setEditing(false)} />
+    {editing && <FavoritesSetup meta={meta} onDone={() => setEditing(false)} />}
+    {live > 0 && <Link to="/live" className="live-banner"><LiveBadge /><span>{live} {live === 1 ? 'Spiel läuft' : 'Spiele laufen'} gerade</span><Icon name="arrow" size={19} /></Link>}
+    <div className="home-grid"><div className="min-w-0"><MatchCenter key={meta.season} meta={meta} mine={mine} /></div><aside className="home-sidebar" aria-label="Deine Teams und Ligen">
+      <Section title="Deine Teams" action={mine ? <button className="text-action" onClick={() => { setEditing(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Bearbeiten</button> : undefined}>
+        {myTeams.length ? <><div>{myTeams.slice(0, 6).map((team) => <Link key={team.id} to={`/team/${team.id}`} className="favorite-team"><TeamLogo teamId={team.id} name={team.name} size={30} /><span className="min-w-0 flex-1"><span className="favorite-team-name block">{team.name}</span><span className="mt-1 block text-[10px] text-(--color-ink-3)">{leagueLabel(meta.leagues.find((league) => league.id === team.leagueId)?.short ?? '')}</span></span><Icon name="chevron-right" size={15} className="text-(--color-ink-3)" /></Link>)}</div>{myTeams.length > 6 && <button className="text-action mt-2" onClick={() => setEditing(true)}>Alle {myTeams.length} Favoriten bearbeiten</button>}</> : <div className="favorite-prompt"><Icon name="star" size={22} className="mb-3 text-(--color-brand)" /><h3 className="text-sm font-semibold">Dein Verein. Direkt hier.</h3><p>Speichere deine Teams und finde ihre Spiele auf einen Blick.</p><button className="button-secondary" onClick={() => { setEditing(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Teams auswählen<Icon name="arrow" size={15} /></button></div>}
+        {(favorites.length > 0 || favoriteLeagues.length > 0) && <div className="mt-2"><ShareButton teams={favorites} leagues={favoriteLeagues} /></div>}
+      </Section>
+      <Section title={myLeagues.length ? 'Deine Ligen & mehr' : 'Ligen entdecken'} action={<TextLink to="/ligen">Alle {meta.leagues.length}<Icon name="arrow" size={14} /></TextLink>}><LeagueDirectory leagues={featuredLeagues} teams={meta.teams ?? []} stars={false} /><Link to="/ligen" className="text-action mt-3">Alle Tabellen & Spielpläne<Icon name="arrow" size={15} /></Link></Section>
+    </aside></div>
+  </div>;
 }

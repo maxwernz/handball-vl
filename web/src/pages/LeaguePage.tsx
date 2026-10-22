@@ -10,7 +10,7 @@ import { UnitTable } from '../components/UnitTable.tsx';
 import { PLAYER_VIEWS, PlayerTable, TeamTable, TeamViewChips, type PlayerView, type TeamView } from '../components/StatTables.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Chips, Empty, ErrorBox, FavoriteStar, Loading, Section, Tabs } from '../components/ui.tsx';
-import { toggleFavoriteLeague, useFavoriteLeagues, useFavorites } from '../lib/favorites.ts';
+import { toggleFavoriteLeague, useFavoriteLeagues, useFavoriteTeamIds } from '../lib/favorites.ts';
 import { formatDay, isoDay } from '../lib/format.ts';
 import { currentRound, rankHistory, tableFor, type TableView, type Unit } from '../lib/standings.ts';
 import { storage } from '../lib/storage.ts';
@@ -115,10 +115,10 @@ function ScheduleTab({ league }: { league: League }) {
 const MAX_SELECTED = SERIES_COLORS.length;
 
 function HistoryTab({ league }: { league: League }) {
-  const favorites = useFavorites();
+  const favorites = useFavoriteTeamIds();
   const history = useMemo(() => rankHistory(league), [league]);
   const [selected, setSelected] = useState<number[]>(() => {
-    const favs = league.teams.filter((t) => favorites.includes(t.name)).map((t) => t.id);
+    const favs = league.teams.filter((t) => favorites.has(t.id)).map((t) => t.id);
     return (favs.length ? favs : league.table.slice(0, 3).map((r) => r.teamId)).slice(0, MAX_SELECTED);
   });
   if (!history.rounds.length) return <Empty>Der Tabellenverlauf erscheint nach dem ersten Spieltag.</Empty>;
@@ -198,7 +198,8 @@ function StatsTab({ league }: { league: League }) {
 export function LeaguePage() {
   const id = Number(useParams().id);
   const [params, setParams] = useSearchParams();
-  const tab = (params.get('tab') as Tab) ?? 'table';
+  const requestedTab = params.get('tab') as Tab;
+  const tab = (['table', 'schedule', 'history', 'stats'] as Tab[]).includes(requestedTab) ? requestedTab : 'table';
   const setTab = (t: Tab) => setParams(t === 'table' ? {} : { tab: t }, { replace: true });
   const swipe = useTabSwipe<Tab>(['table', 'schedule', 'history', 'stats'], tab, setTab);
   const { data: league, isLoading, error } = useLeague(id);
@@ -207,7 +208,7 @@ export function LeaguePage() {
   useEffect(() => storage.set('lastLeague', String(id)), [id]);
 
   if (isLoading) return <Loading />;
-  if (error || !league) return <ErrorBox error={error} />;
+  if (!league) return <ErrorBox error={error} />;
   return (
     <div>
       <div className="mb-4 flex items-start gap-3">

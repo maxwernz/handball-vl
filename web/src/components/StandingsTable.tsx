@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import type { League } from '../../../shared/types.ts';
-import { useFavorites } from '../lib/favorites.ts';
+import { useFavoriteTeamIds } from '../lib/favorites.ts';
 import { signed } from '../lib/format.ts';
 import { formOf, type LiveRow } from '../lib/standings.ts';
 import { TeamLogo } from './TeamLogo.tsx';
@@ -17,7 +17,7 @@ export function StandingsTable({
   compact?: boolean;
   highlight?: number;
 }) {
-  const favorites = useFavorites();
+  const favorites = useFavoriteTeamIds();
   return (
     <div className="card overflow-hidden">
       <table className="tabular w-full border-collapse text-sm">
@@ -41,7 +41,7 @@ export function StandingsTable({
         </thead>
         <tbody>
           {rows.map((r) => {
-            const isFav = favorites.includes(r.team);
+            const isFav = favorites.has(r.teamId);
             const marked = r.teamId === highlight || isFav;
             return (
               <tr

@@ -6,6 +6,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
+import { config } from './config.ts';
 import { fetchJson, fetchWithRetry } from './http.ts';
 import { filePath, read, write } from './store.ts';
 
@@ -103,19 +104,20 @@ function slug(name: string) {
 }
 
 const pending = new Map<string, Promise<string | null>>();
+let remainingLookups = config.logoLookupLimit;
 
 /** Path (relative to the data dir) of the logo for a team, resolving it on first use. */
-export function logoFor(team: string): Promise<string | null> {
+export function logoFor(team: string, allowLookup = true): Promise<string | null> {
   const key = clubName(team);
   let job = pending.get(key);
   if (!job) {
-    job = resolveLogo(key).finally(() => pending.delete(key));
+    job = resolveLogo(key, allowLookup).finally(() => pending.delete(key));
     pending.set(key, job);
   }
   return job;
 }
 
-async function resolveLogo(key: string): Promise<string | null> {
+async function resolveLogo(key: string, allowLookup: boolean): Promise<string | null> {
   const index = (await read<Record<string, IndexEntry>>(INDEX_KEY)) ?? {};
   const overrides = (await read<Record<string, string | null>>('logo-overrides')) ?? {};
   const entry = index[key];
@@ -126,6 +128,8 @@ async function resolveLogo(key: string): Promise<string | null> {
     if (fresh) return entry.file;
   }
   if (entry && override !== undefined && entry.club === `override:${override}`) return entry.file;
+  if (!allowLookup || remainingLookups <= 0) return entry?.file ?? null;
+  remainingLookups--;
 
   let file: string | null = null;
   let club: string | null = null;

@@ -12,7 +12,6 @@ import type {
   LeagueRef,
   LeagueSummary,
   Meta,
-  Report,
   SiteIndex,
   StatsResponse,
   Summary,
@@ -26,9 +25,11 @@ import { exists, filePath, read } from './store.ts';
 import { keys, type SeasonIndex } from './sync.ts';
 
 const toRef = ({ id, short, name }: LeagueRef): LeagueRef => ({ id, short, name });
+let exportDir = config.outDir;
+let allowLogoLookups = true;
 
 async function emit(relative: string, value: unknown) {
-  const file = path.join(config.outDir, `${relative}.json`);
+  const file = path.join(exportDir, `${relative}.json`);
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, JSON.stringify(value));
 }
@@ -94,12 +95,17 @@ function topScorers(data: SeasonData): Record<number, GameScorer[]> {
 async function exportLogos(data: SeasonData) {
   const logos: Record<number, string> = {};
   const colors: Record<number, string> = {};
-  await fs.mkdir(path.join(config.outDir, 'logos'), { recursive: true });
+  await fs.mkdir(path.join(exportDir, 'logos'), { recursive: true });
   for (const team of data.leagues.flatMap((l) => l.teams)) {
-    const file = await logoFor(team.name);
+    const file = await logoFor(team.name, allowLogoLookups);
     if (!file) continue;
     const name = path.basename(file);
-    await fs.copyFile(filePath(file), path.join(config.outDir, 'logos', name));
+    try {
+      await fs.copyFile(filePath(file), path.join(exportDir, 'logos', name));
+    } catch {
+      console.warn(`cached logo missing for ${team.name}; using team initials`);
+      continue;
+    }
     logos[team.id] = name;
     const color = await logoColor(file).catch(() => null);
     if (color) colors[team.id] = color;
@@ -109,15 +115,15 @@ async function exportLogos(data: SeasonData) {
 
 async function exportSeason(season: number, current: boolean) {
   const data = await seasonData(season);
-  const refs = (await read<LeagueRef[]>(keys.leagues(season))) ?? [];
   const base = `s/${season}`;
 
   const meta: Meta = {
     season,
-    leagues: refs.map(toRef),
+    // Publish links only after a league snapshot exists, including partial syncs.
+    leagues: data.leagues.map(toRef),
     ...(await exportLogos(data)),
     teams: data.leagues.flatMap((l) => l.teams.map((t) => ({ id: t.id, name: t.name, leagueId: l.id }))),
-    incomplete: !current && !(await exists(keys.complete(season))),
+    incomplete: data.games.some((game) => game.status === 'finished' && !data.reports.has(game.id)),
   };
   await emit(`${base}/meta`, meta);
   await emit(`${base}/games`, [...data.games].sort((a, b) => a.ts - b.ts));
@@ -132,11 +138,12 @@ async function exportSeason(season: number, current: boolean) {
       const detail: GameDetail = {
         game,
         league: toRef(league),
-        report: await read<Report>(keys.report(game.id)),
+        report: data.reports.get(game.id) ?? null,
         summary: await read<Summary>(keys.summary(game.id)),
         reportUrl: game.reportId && game.status === 'finished' ? reportUrl(game.reportId) : null,
         previous: league.games.filter(
           (g) =>
+            game.homeId !== null && game.guestId !== null &&
             g.id !== game.id &&
             g.status === 'finished' &&
             [g.homeId, g.guestId].includes(game.homeId) &&
@@ -168,12 +175,40 @@ async function exportSeason(season: number, current: boolean) {
   console.log(`exported season ${season}: ${data.leagues.length} leagues, ${data.games.length} games, ${data.players.size} players`);
 }
 
-export async function exportAll(index: SeasonIndex) {
-  await fs.rm(config.outDir, { recursive: true, force: true });
-  const seasons: SiteIndex = { seasons: index.seasons, currentSeason: index.current, updatedAt: new Date().toISOString() };
-  await emit('index', seasons);
-  for (const { id } of index.seasons) {
-    await exportSeason(id, id === index.current);
+export async function exportAll(index: SeasonIndex, options: { refreshLogos?: boolean } = {}) {
+  const staging = `${config.outDir}.staging-${process.pid}`;
+  const previous = `${config.outDir}.previous-${process.pid}`;
+  exportDir = staging;
+  allowLogoLookups = options.refreshLogos ?? true;
+  let movedPrevious = false;
+  try {
+    await fs.mkdir(staging, { recursive: true });
+    const snapshots = await Promise.all(index.seasons.map(({ id }) => seasonData(id)));
+    const available = index.seasons.filter((_, i) => snapshots[i].leagues.length > 0);
+    if (!available.length) throw new Error('No league snapshots available to publish');
+    const refreshed = snapshots.flatMap((s) => s.leagues.map((l) => l.updatedAt)).filter((s) => Number.isFinite(Date.parse(s))).sort();
+    const seasons: SiteIndex = {
+      seasons: available,
+      currentSeason: available.some((s) => s.id === index.current) ? index.current : available[0].id,
+      // An export or failed sync must never make old results appear freshly fetched.
+      updatedAt: refreshed.at(-1) ?? index.updatedAt,
+    };
+    await emit('index', seasons);
+    for (const { id } of available) await exportSeason(id, id === seasons.currentSeason);
+    try {
+      await fs.rename(config.outDir, previous);
+      movedPrevious = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    await fs.rename(staging, config.outDir);
+    if (movedPrevious) await fs.rm(previous, { recursive: true, force: true });
+  } catch (error) {
+    if (movedPrevious) await fs.rename(previous, config.outDir).catch(() => undefined);
+    await fs.rm(staging, { recursive: true, force: true });
+    throw error;
+  } finally {
+    exportDir = config.outDir;
   }
 }
 

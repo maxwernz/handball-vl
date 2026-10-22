@@ -46,6 +46,7 @@ jobs:
 
       # Bricht ab, bevor ein kaputter Parser falsche Zahlen veröffentlicht.
       - run: npm test
+      - run: npm run typecheck
 
       - name: Daten von h4a synchronisieren
         run: node pipeline/run.ts
@@ -57,6 +58,12 @@ jobs:
           repo="${GITHUB_REPOSITORY#*/}"
           if [[ "$repo" == *.github.io ]]; then export BASE_PATH=/; else export BASE_PATH="/$repo/"; fi
           npm run build
+
+      - name: Browser-Prüfung vor Veröffentlichung
+        if: github.event_name != 'schedule'
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e -- --project=desktop
 
       - name: Datenstand sichern
         run: |
