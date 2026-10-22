@@ -6,7 +6,7 @@
   "scripts": {
     "test": "node --test \"test/*.test.ts\"",
     "dev": "vite",
-    "build": "vite build && cp dist/index.html dist/404.html",
+    "build": "vite build && node scripts/pages.mjs",
     "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json",
     "icons": "node scripts/icons.mjs",
     "data": "node pipeline/run.ts",

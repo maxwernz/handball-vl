@@ -9,6 +9,8 @@ Spielberichte und Spielerstatistiken ergänzen sich schrittweise, sobald geprüf
 
 Die Seite ist komplett statisch und läuft kostenlos auf **GitHub Pages**. Ein GitHub-Actions-Workflow holt
 regelmäßig die Daten, wertet die Spielberichte aus und veröffentlicht die Seite neu.
+Der Build erzeugt für bekannte Ligen, Teams, Spiele und Spieler eigene HTML-Einstiegspunkte,
+damit direkte Links und Neuladen auf GitHub Pages regulär mit HTTP 200 funktionieren.
 
 ## Aufbau
 
