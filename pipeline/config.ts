@@ -22,7 +22,9 @@ export const config = {
   /** Inactive leagues can reuse their snapshot; match-day leagues refresh each run. */
   leagueRefreshMinutes: numberOption('LEAGUE_REFRESH_MINUTES', 360),
   /** Absolute caps keep newly added leagues from causing a burst of backfill traffic. */
-  detailRequestLimit: Math.floor(numberOption('DETAIL_REQUEST_LIMIT', 60)),
+  detailRequestLimit: Math.floor(numberOption('DETAIL_REQUEST_LIMIT', 120)),
+  /** Written recaps must not consume the allowance needed for player statistics. */
+  summaryRequestLimit: Math.floor(numberOption('SUMMARY_REQUEST_LIMIT', 20)),
   teamLookupLimit: Math.floor(numberOption('TEAM_LOOKUP_LIMIT', 20)),
   logoLookupLimit: Math.floor(numberOption('LOGO_LOOKUP_LIMIT', 6)),
   timeZone: 'Europe/Berlin',

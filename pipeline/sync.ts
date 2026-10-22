@@ -157,10 +157,10 @@ function sanitizeSummary(raw: { text: string; footer: string }): Summary {
   return { title, html };
 }
 
-async function syncGameDetails(game: Game, budget: { remaining: number }) {
+async function syncGameDetails(game: Game, budget: { remaining: number }, kind: 'report' | 'summary') {
   if (game.status !== 'finished' || Date.now() < game.ts + REPORT_EARLIEST_MS) return true;
   let complete = true;
-  if (game.reportId) {
+  if (kind === 'report' && game.reportId) {
     const existing = await read<Report>(keys.report(game.id));
     const recheck = existing && Date.parse(existing.fetchedAt) < game.ts + REPORT_RECHECK_MS && Date.now() > game.ts + REPORT_RECHECK_MS;
     if (!existing || recheck || checkReport(existing, game).length) {
@@ -187,7 +187,7 @@ async function syncGameDetails(game: Game, budget: { remaining: number }) {
       }
     }
   }
-  if (game.hasSummary && !(await exists(keys.summary(game.id)))) {
+  if (kind === 'summary' && game.hasSummary && !(await exists(keys.summary(game.id)))) {
     if (budget.remaining <= 0) complete = false;
     else {
       budget.remaining--;
@@ -211,18 +211,23 @@ export function detailCandidates(leagues: League[]): Game[] {
 }
 
 /** Fetch missing reports and summaries within both time and request budgets. */
-async function syncDetails(leagues: League[], deadline: number): Promise<boolean> {
+export async function syncDetails(leagues: League[], deadline: number): Promise<boolean> {
   const games = detailCandidates(leagues);
   const budget = { remaining: config.detailRequestLimit };
   let complete = true;
-  for (const game of games) {
-    if (Date.now() > deadline || budget.remaining <= 0) return false;
-    try {
-      if (!(await syncGameDetails(game, budget))) complete = false;
-    } catch (err) {
-      if (err instanceof RateLimitedError) throw err;
-      complete = false;
-      console.warn(`details for game ${game.id} failed:`, (err as Error).message);
+  // First try statistics-bearing reports across every league. Recaps are a
+  // second pass, so an old written summary cannot delay a newly finished match.
+  for (const kind of ['report', 'summary'] as const) {
+    const allowance = kind === 'summary' ? { remaining: Math.min(budget.remaining, config.summaryRequestLimit) } : budget;
+    for (const game of games) {
+      if (Date.now() > deadline || allowance.remaining <= 0) return false;
+      try {
+        if (!(await syncGameDetails(game, allowance, kind))) complete = false;
+      } catch (err) {
+        if (err instanceof RateLimitedError) throw err;
+        complete = false;
+        console.warn(`${kind} for game ${game.id} failed:`, (err as Error).message);
+      }
     }
   }
   return complete;

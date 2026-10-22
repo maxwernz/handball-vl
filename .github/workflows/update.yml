@@ -2,14 +2,20 @@ name: Daten aktualisieren und veröffentlichen
 
 on:
   schedule:
-    # Zeiten in UTC. h4a bittet um sparsamen Zugriff: an Spieltagen alle 30 Minuten,
-    # sonst zweimal täglich. Live-Spielstände holt die App ohnehin selbst von h4a.
-    - cron: '*/30 11-21 * * 6,0' # Sa/So nachmittags und abends
-    - cron: '15 17-21 * * 1-5' # werktags abends stündlich
+    # UTC: weekend results every 30 min, weekday results hourly. Inactive
+    # leagues reuse snapshots; HTTP requests remain serialized and spaced.
+    - cron: '*/30 6-22 * * 6,0'
+    - cron: '15 6-22 * * 1-5'
     - cron: '0 5 * * *' # jeden Morgen
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Import mode (backfill temporarily prioritizes historical statistics)
+        type: choice
+        options: [standard, backfill]
+        default: standard
 
 permissions:
   contents: write # Datenstand im Branch "data" sichern
@@ -23,7 +29,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -51,7 +57,9 @@ jobs:
       - name: Daten von h4a synchronisieren
         run: node pipeline/run.ts
         env:
-          BUDGET_MINUTES: 8
+          BUDGET_MINUTES: ${{ inputs.mode == 'backfill' && '24' || '8' }}
+          DETAIL_REQUEST_LIMIT: ${{ inputs.mode == 'backfill' && '600' || '120' }}
+          SUMMARY_REQUEST_LIMIT: ${{ inputs.mode == 'backfill' && '0' || '20' }}
 
       - name: Seite bauen
         run: |

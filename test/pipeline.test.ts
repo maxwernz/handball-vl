@@ -8,8 +8,10 @@ import type { Game, League, Meta, SiteIndex } from '../shared/types.ts';
 import { config } from '../pipeline/config.ts';
 import { exportAll } from '../pipeline/export.ts';
 import { write } from '../pipeline/store.ts';
-import { detailCandidates, keys, shouldRefreshLeague } from '../pipeline/sync.ts';
+import { detailCandidates, keys, shouldRefreshLeague, syncDetails } from '../pipeline/sync.ts';
 import { resolveTeamNames } from '../pipeline/teams.ts';
+import { fetchReportPdf } from '../pipeline/h4a.ts';
+import { RateLimitedError } from '../pipeline/http.ts';
 
 const teams = [
   { teamID: '1', teamName: 'HSG Leinfelden-Echterdingen' },
@@ -60,6 +62,38 @@ test('bounded report backfill covers each league before adding older reports', (
   ] as League[];
   assert.deepEqual(detailCandidates(leagues).map((g) => g.id), [1, 4, 2]);
   assert.deepEqual(detailCandidates([]), []);
+});
+
+test('a small import budget goes to reports in both leagues before written summaries', async () => {
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'handball-priority-test-'));
+  const original = { dataDir: config.dataDir, limit: config.detailRequestLimit, fetch: globalThis.fetch };
+  config.dataDir = temporary;
+  config.detailRequestLimit = 2;
+  const requests: string[] = [];
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    return new Response('Not yet published', { status: 404 });
+  };
+  try {
+    const game = (id: number) => ({ id, reportId: id + 1000, ts: Date.now() - 3 * 3600_000, status: 'finished', hasSummary: true }) as Game;
+    await syncDetails([{ games: [game(1)] }, { games: [game(2)] }] as League[], Date.now() + 30_000);
+    assert.equal(requests.length, 2);
+    assert.ok(requests.every((url) => url.includes('sboPublicReports.php')), 'summaries must not crowd out another league’s report');
+    assert.ok(requests[0].includes('1001'));
+    assert.ok(requests[1].includes('1002'));
+  } finally {
+    config.dataDir = original.dataDir;
+    config.detailRequestLimit = original.limit;
+    globalThis.fetch = original.fetch;
+    await fs.rm(temporary, { recursive: true, force: true });
+  }
+});
+
+test('a PDF endpoint soft rate limit stops backfill instead of consuming more requests', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response('Too many requests', { status: 200, headers: { 'content-type': 'text/html' } });
+  try { await assert.rejects(fetchReportPdf(123), RateLimitedError); }
+  finally { globalThis.fetch = original; }
 });
 
 test('offline export preserves data freshness and publishes only available league links', async () => {

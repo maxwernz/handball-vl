@@ -41,12 +41,21 @@ without a license“). Die Pipeline ist deshalb bewusst sparsam:
   außerhalb des Spieltags höchstens alle sechs Stunden,
 - neue Ligen benötigen zunächst je eine Anfrage für Tabelle und vollständigen Spielplan; die Zuordnung
   von Mannschaftskürzeln nutzt eindeutige Ergebnisdaten und bekannte Namen, zusätzliche Abfragen sind begrenzt,
-- höchstens 60 Detailabfragen, 20 zusätzliche Mannschaftsabfragen und sechs Logo-Suchen pro Lauf;
+- höchstens 120 Detailabfragen, 20 zusätzliche Mannschaftsabfragen und sechs Logo-Suchen pro regulärem Lauf;
   fehlende Berichte und Logos folgen in späteren Läufen,
 - mindestens 1,5 s Abstand zwischen Anfragen,
 - bei „Too many requests“ enden die h4a-Abfragen sofort; vorhandene Daten bleiben erhalten,
 - Vorsaisons werden standardmäßig nicht nachgeladen (`PAST_SEASONS=0`),
-- der Workflow läuft am Wochenende alle 30 Minuten, werktags abends stündlich und zusätzlich einmal morgens.
+- der Workflow läuft am Wochenende alle 30 Minuten von 06–22 UTC, werktags stündlich von 06–22 UTC und zusätzlich einmal morgens.
+
+Tabellen und Ergebnisse aller fälligen Ligen werden **vor** den Detailberichten aktualisiert und fallen
+nicht unter das Detailbudget. PDF-Berichte für Spielerstatistiken haben Vorrang vor geschriebenen
+Zusammenfassungen; letztere erhalten höchstens 20 der verbleibenden Anfragen. Neue Berichte werden
+ligaübergreifend vor älteren Spielen abgearbeitet.
+
+Für eine einmalige Aufholaktion lässt sich der Workflow manuell mit `mode=backfill` starten:
+maximal 600 Detailanfragen und 24 Minuten, ausschließlich PDF-Berichte. Danach gelten automatisch
+wieder die normalen Grenzen. Anfrageabstände und Abbruch bei Ratenbegrenzung bleiben erhalten.
 
 Nicht abrufbare PDF-Berichte werden frühestens nach sechs Stunden erneut versucht. Berichte, deren
 Spieler- oder Verlaufstore nicht zum Ergebnis passen, fließen nicht in Statistiken ein. Der Export
@@ -104,7 +113,8 @@ abzufragen. Vor Veröffentlichungen per Push oder manuellem Workflow laufen zus�
 | `LEAGUE_PATTERN` | `^[MF]-(RL\|OL\|VL\|LL)(-\|$)` | Welche Spielklassen (h4a-Kurzname) verfolgt werden |
 | `PAST_SEASONS` | `0` | Vorsaisons, die zusätzlich geladen werden (viele Anfragen, siehe oben) |
 | `BUDGET_MINUTES` | `8` | Zeitbudget pro Lauf; nach Ablauf werden keine weiteren Berichte abgerufen |
-| `DETAIL_REQUEST_LIMIT` | `60` | Maximale Anzahl von PDF- und Textbericht-Abfragen pro Lauf |
+| `DETAIL_REQUEST_LIMIT` | `120` | Maximale Anzahl von PDF- und Textbericht-Abfragen pro regulärem Lauf |
+| `SUMMARY_REQUEST_LIMIT` | `20` | Maximaler Anteil für Textberichte, nachdem PDF-Berichte verarbeitet wurden |
 | `TEAM_LOOKUP_LIMIT` | `20` | Maximale Anzahl zusätzlicher Abfragen für unbekannte Mannschaftskürzel |
 | `LOGO_LOOKUP_LIMIT` | `6` | Maximale Anzahl von Vereinslogo-Suchen pro Lauf |
 | `LEAGUE_REFRESH_MINUTES` | `360` | Aktualisierungsabstand außerhalb des Zeitfensters von 30 Minuten vor bis drei Stunden nach Spielbeginn |

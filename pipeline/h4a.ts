@@ -1,7 +1,7 @@
 // Client for the handball4all (h4a) JSON service that powers the BWHV result pages.
 
 import { H4A_BASE, H4A_ORG, leagueUrl, type Envelope, type LeagueResponse, type OrgResponse } from '../shared/h4a.ts';
-import { fetchJson, fetchWithRetry } from './http.ts';
+import { fetchJson, fetchWithRetry, RateLimitedError } from './http.ts';
 
 /** h4a rate-limits bursts, so keep at least this much time between requests. */
 const GAP_MS = 1500;
@@ -31,7 +31,11 @@ export function reportUrl(reportId: number) {
 
 export async function fetchReportPdf(reportId: number): Promise<Uint8Array | null> {
   const res = await fetchWithRetry(reportUrl(reportId), { gapMs: GAP_MS });
-  if (!res.ok || !res.headers.get('content-type')?.includes('pdf')) return null;
+  if (!res.headers.get('content-type')?.includes('pdf')) {
+    if (/too many requests/i.test((await res.text()).slice(0, 500))) throw new RateLimitedError(reportUrl(reportId));
+    return null;
+  }
+  if (!res.ok) return null;
   return new Uint8Array(await res.arrayBuffer());
 }
 
