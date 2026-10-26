@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test \"test/*.test.ts\"",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.ts\"",
     "dev": "vite",
     "build": "vite build && node scripts/pages.mjs",
     "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json",
@@ -12,7 +12,9 @@
     "data": "node pipeline/run.ts",
     "data:export": "node pipeline/run.ts --export",
     "preview": "vite preview",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "analyse:update": "node --disable-warning=ExperimentalWarning analysis/update.ts",
+    "analyse:server": "node --disable-warning=ExperimentalWarning analysis/server.ts"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +26,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@playwright/test": "^1.64.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query": "^5.104.0",
@@ -37,6 +40,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
-    "vite-plugin-pwa": "^1.3.0"
+    "vite-plugin-pwa": "^1.3.0",
+    "zod": "^4.6.7"
   }
 }

@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["pipeline", "shared"]
+  "include": ["pipeline", "shared", "analysis"]
 }

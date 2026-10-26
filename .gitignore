@@ -6,3 +6,6 @@ web/public/api
 .DS_Store
 test-results
 playwright-report
+analysis/.data
+analysis/handball.db
+analysis/handball.db.tmp

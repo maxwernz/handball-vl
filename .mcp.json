@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "handball-bw": {
+      "command": "node",
+      "args": [
+        "--disable-warning=ExperimentalWarning",
+        "analysis/server.ts"
+      ]
+    }
+  }
+}

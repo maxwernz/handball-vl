@@ -15,6 +15,7 @@ import { playerKey } from '../shared/players.ts';
 import { read } from './store.ts';
 import { keys, loadLeagues } from './sync.ts';
 import { checkReport } from './report.ts';
+import { playersDown, shortages } from '../shared/strength.ts';
 
 export interface SeasonData {
   leagues: League[];
@@ -101,7 +102,6 @@ function addResult(stats: TeamStats, game: Game, home: boolean) {
 }
 
 const isGoal = (e: MatchEvent) => e.type === 'goal' || e.type === 'sevenGoal';
-const PENALTY_SECONDS = 120;
 
 interface SideFlow {
   leading: number;
@@ -130,19 +130,12 @@ export function gameFlow(report: Report): { total: number; home: SideFlow; guest
   }
   addTime(total);
 
-  // A disqualification also leaves the team a player short for two minutes.
-  const penalties: { side: 'home' | 'guest'; t: number; index: number }[] = [];
-  report.events.forEach((e, index) => {
-    if ((e.type === 'twoMinutes' || e.type === 'disqualification') && e.side) penalties.push({ side: e.side, t: e.t, index });
-  });
+  const missing = shortages(report.events);
   report.events.forEach((e, index) => {
     if (!isGoal(e) || !e.side) return;
-    const serving = (side: 'home' | 'guest') =>
-      penalties.filter((p) => p.side === side && p.index < index && e.t - p.t < PENALTY_SECONDS).length;
-    const homeDown = serving('home');
-    const guestDown = serving('guest');
-    if (homeDown === guestDown) return;
-    const ahead = homeDown < guestDown ? 'home' : 'guest';
+    const down = playersDown(missing, report.events, index);
+    if (down.home === down.guest) return;
+    const ahead = down.home < down.guest ? 'home' : 'guest';
     const behind = ahead === 'home' ? 'guest' : 'home';
     if (e.side === ahead) (flow[ahead].powerPlay.for++, flow[behind].shortHanded.against++);
     else (flow[behind].shortHanded.for++, flow[ahead].powerPlay.against++);

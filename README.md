@@ -88,6 +88,11 @@ Die Seite ist dann unter `https://<benutzer>.github.io/<repo>/` erreichbar und l
 Hinweis: GitHub pausiert zeitgesteuerte Workflows in Repos ohne Aktivität für 60 Tage (z. B. in der
 Sommerpause). Dann unter **Actions** einfach wieder aktivieren.
 
+## Analyse mit KI
+
+Ein lokaler MCP-Server macht alle Daten für Claude Code und Codex abfragbar, etwa für Videoanalyse
+(Unterzahl-Phasen, Strafen, Spielverlauf). Siehe [analysis/README.md](analysis/README.md).
+
 ## Lokal entwickeln
 
 ```sh
