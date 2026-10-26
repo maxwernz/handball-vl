@@ -121,6 +121,27 @@ main:focus { outline: none; }
 .date-button.is-selected strong { color: inherit; }
 .date-button.is-today:not(.is-selected) strong { color: var(--color-brand); }
 .date-button .date-dot { height: 3px; width: 3px; border-radius: 100%; background: currentColor; opacity: .65; }
+.scope-switch { display: inline-flex; padding: 3px; gap: 3px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); }
+.scope-switch button { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 650; color: var(--color-ink-2); }
+.scope-switch button[aria-pressed="true"] { background: var(--color-brand); color: var(--color-brand-ink); }
+.league-shortcuts { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 20px; }
+.league-shortcut { display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; min-height: 38px; padding: 7px 12px; border: 1px solid var(--color-line); border-radius: 999px; background: var(--color-surface); font-size: 12px; font-weight: 650; white-space: nowrap; }
+.league-shortcut:hover { border-color: var(--color-brand); color: var(--color-brand); }
+.league-shortcut > svg:first-child { color: var(--color-brand); }
+.league-shortcut.is-muted { color: var(--color-ink-2); }
+.favorite-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; padding: 10px 14px; border: 1px dashed var(--color-line); border-radius: 9px; color: var(--color-ink-2); font-size: 12px; }
+.favorite-hint > svg { color: var(--color-brand); }
+.league-groups { display: grid; gap: 8px; }
+.league-group > .game-list { margin-top: 6px; }
+.league-group-head { display: flex; align-items: stretch; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); overflow: hidden; }
+.league-group-toggle { display: flex; flex: 1; min-width: 0; align-items: center; gap: 10px; min-height: 52px; padding: 8px 12px; text-align: left; }
+.league-group-toggle:hover { background: var(--color-surface-2); }
+.league-group-chevron { flex-shrink: 0; color: var(--color-ink-3); transition: transform .15s; }
+.league-group-toggle[aria-expanded="true"] .league-group-chevron { transform: rotate(90deg); }
+.league-group-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 650; }
+.league-group-meta { display: block; margin-top: 2px; font-size: 11px; color: var(--color-ink-3); }
+.league-group-table { display: inline-flex; align-items: center; gap: 4px; padding: 0 12px; border-left: 1px solid var(--color-line); color: var(--color-brand); font-size: 12px; font-weight: 650; white-space: nowrap; }
+.league-group-table:hover { background: var(--color-surface-2); }
 .day-heading { display: flex; align-items: center; gap: 10px; margin: 21px 1px 9px; font-size: 12px; font-weight: 650; }
 .day-heading span { font-size: 10px; color: var(--color-ink-3); font-weight: 450; }
 .game-list { border-radius: 9px; }

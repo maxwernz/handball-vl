@@ -1,16 +1,17 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import type { Game, Meta } from '../../../shared/types.ts';
+import type { Game, LeagueRef, Meta } from '../../../shared/types.ts';
 import { useGames, useLiveGames, useMeta } from '../api.ts';
 import { GameList } from '../components/GameRow.tsx';
 import { Icon } from '../components/Icon.tsx';
-import { LeagueDirectory } from '../components/LeagueDirectory.tsx';
+import { LeagueShortcuts } from '../components/LeagueDirectory.tsx';
 import { MatchdayHighlights } from '../components/MatchdayHighlights.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
-import { Chips, Empty, ErrorBox, LiveBadge, Loading, Section, TextLink } from '../components/ui.tsx';
-import { setFavorites, shareLink, toggleFavorite, toggleFavoriteLeague, useFavoriteLeagues, useFavorites, useFavoriteTeamIds } from '../lib/favorites.ts';
-import { formatDay, isoDay, leagueLabel, relativeDay } from '../lib/format.ts';
+import { Chips, Empty, ErrorBox, LiveBadge, Loading, Section } from '../components/ui.tsx';
+import { setFavorites, setOpenLeagues, shareLink, toggleFavorite, toggleFavoriteLeague, useFavoriteLeagues, useFavorites, useFavoriteTeamIds, useOpenLeagues } from '../lib/favorites.ts';
+import { formatDay, isoDay, leagueLabel, leagueOrder, relativeDay } from '../lib/format.ts';
 import { matcher } from '../lib/search.ts';
+import { useStoredState } from '../lib/storage.ts';
 
 function berlinToday() {
   const parts = new Intl.DateTimeFormat('en', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
@@ -26,12 +27,33 @@ function monday(day: string) {
   return shiftDay(day, -((new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7));
 }
 
-function MatchCenter({ meta, mine }: { meta: Meta; mine: ((game: Game) => boolean) | null }) {
+type Scope = 'mine' | 'all';
+
+function LeagueGroup({ league, games, open, onToggle, showDate }: { league: LeagueRef; games: Game[]; open: boolean; onToggle: () => void; showDate: boolean }) {
+  const live = games.some((game) => game.status === 'live');
+  const finished = games.filter((game) => game.status === 'finished').length;
+  return <section className="league-group">
+    <div className="league-group-head">
+      <button className="league-group-toggle" aria-expanded={open} onClick={onToggle}>
+        <Icon name="chevron-right" size={15} className="league-group-chevron" />
+        <span className="min-w-0 flex-1"><span className="league-group-title">{league.name}</span><span className="league-group-meta">{games.length} {games.length === 1 ? 'Spiel' : 'Spiele'}{finished > 0 && finished < games.length ? ` · ${finished} beendet` : ''}</span></span>
+        {live && <LiveBadge small />}
+      </button>
+      <Link to={`/liga/${league.id}`} className="league-group-table" aria-label={`Tabelle ${league.name}`}>Tabelle<Icon name="chevron-right" size={14} /></Link>
+    </div>
+    {open && <GameList games={games} showDate={showDate} />}
+  </section>;
+}
+
+function MatchCenter({ meta, mine, onEditFavorites }: { meta: Meta; mine: ((game: Game) => boolean) | null; onEditFavorites: () => void }) {
   const { data: games, isPending, error } = useGames();
+  const favoriteLeagues = useFavoriteLeagues();
+  const favoriteIds = useFavoriteTeamIds();
+  const storedOpen = useOpenLeagues();
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState('all');
-  const [league, setLeague] = useState('all');
-  const [onlyMine, setOnlyMine] = useState(false);
+  const [storedScope, setScope] = useStoredState<Scope>('homeScope', ['mine', 'all'], 'mine');
+  const scope: Scope = mine ? storedScope : 'all';
   const [limit, setLimit] = useState(40);
   const today = berlinToday();
   const currentWeek = monday(today);
@@ -44,15 +66,30 @@ function MatchCenter({ meta, mine }: { meta: Meta; mine: ((game: Game) => boolea
   const week = selectedWeek ?? defaultWeek;
   const dates = Array.from({ length: 7 }, (_, index) => shiftDay(week, index));
   const weeklyGames = useMemo(() => (games ?? []).filter((game) => isoDay(game.date) >= week && isoDay(game.date) < shiftDay(week, 7)).sort((a, b) => a.ts - b.ts || a.leagueId - b.leagueId), [games, week]);
-  const filtered = weeklyGames.filter((game) => (league === 'all' || String(game.leagueId) === league) && (!onlyMine || !mine || mine(game)));
+  const filtered = weeklyGames.filter((game) => scope === 'all' || !mine || mine(game));
   const visible = filtered.filter((game) => selectedDay === 'all' || isoDay(game.date) === selectedDay);
-  const groups = new Map<string, Game[]>();
-  for (const game of visible.slice(0, limit)) {
-    const day = isoDay(game.date);
-    groups.set(day, [...(groups.get(day) ?? []), game]);
-  }
   const changeWeek = (next: string) => { setSelectedWeek(next); setSelectedDay('all'); setLimit(40); };
   const tags = new Map(meta.leagues.map((ref) => [ref.id, leagueLabel(ref.short)]));
+  const tag = (game: Game) => tags.get(game.leagueId) ?? '';
+
+  // Leagues with favorites come first and start expanded until the person changes that.
+  const favoriteLeagueIds = new Set([
+    ...meta.leagues.filter((league) => favoriteLeagues.includes(league.short)).map((league) => league.id),
+    ...(meta.teams ?? []).filter((team) => favoriteIds.has(team.id)).map((team) => team.leagueId),
+  ]);
+  const openShorts = storedOpen ?? meta.leagues.filter((league) => favoriteLeagueIds.has(league.id)).map((league) => league.short);
+  const toggleLeague = (short: string) => setOpenLeagues(openShorts.includes(short) ? openShorts.filter((value) => value !== short) : [...openShorts, short]);
+  const leagueGroups = [...meta.leagues]
+    .sort((a, b) => Number(favoriteLeagueIds.has(b.id)) - Number(favoriteLeagueIds.has(a.id)) || leagueOrder(a, b))
+    .map((league) => ({ league, games: visible.filter((game) => game.leagueId === league.id) }))
+    .filter((group) => group.games.length);
+
+  const dayGroups = new Map<string, Game[]>();
+  for (const game of visible.slice(0, limit)) {
+    const day = isoDay(game.date);
+    dayGroups.set(day, [...(dayGroups.get(day) ?? []), game]);
+  }
+  const countLabel = `${visible.length} ${visible.length === 1 ? 'Spiel' : 'Spiele'}${scope === 'all' && leagueGroups.length ? ` in ${leagueGroups.length} ${leagueGroups.length === 1 ? 'Liga' : 'Ligen'}` : ''}`;
   return <section aria-label="Spielplan und Ergebnisse">
     <div className="score-toolbar">
       <div className="week-navigation">
@@ -60,23 +97,24 @@ function MatchCenter({ meta, mine }: { meta: Meta; mine: ((game: Game) => boolea
         <span className="week-label tabular">{formatDay(week).slice(3)} – {formatDay(dates[6]).slice(3)}</span>
         <button className="icon-button" onClick={() => changeWeek(shiftDay(week, 7))} aria-label="Nächste Woche"><Icon name="chevron-right" size={18} /></button>
       </div>
-      <select className="field score-filter" aria-label="Spiele nach Liga filtern" value={league} onChange={(event) => { setLeague(event.target.value); setLimit(40); }}>
-        <option value="all">Alle Ligen</option>{meta.leagues.map((ref) => <option key={ref.id} value={ref.id}>{ref.name}</option>)}
-      </select>
+      {mine && <div className="scope-switch" role="group" aria-label="Welche Spiele anzeigen">
+        <button aria-pressed={scope === 'mine'} onClick={() => { setScope('mine'); setLimit(40); }}><Icon name="star" size={14} />Meine Spiele</button>
+        <button aria-pressed={scope === 'all'} onClick={() => setScope('all')}>Alle Ligen</button>
+      </div>}
     </div>
     <div className="date-strip" aria-label="Spieltag auswählen">
       <button className={`date-button ${selectedDay === 'all' ? 'is-selected' : ''}`} aria-pressed={selectedDay === 'all'} onClick={() => { setSelectedDay('all'); setLimit(40); }}><span>Woche</span><strong>Alle</strong><span className="date-dot" /></button>
       {dates.map((day, index) => <button key={day} className={`date-button ${selectedDay === day ? 'is-selected' : ''} ${day === today ? 'is-today' : ''}`} aria-pressed={selectedDay === day} aria-label={`${formatDay(day)}${day === today ? ', heute' : ''}`} onClick={() => { setSelectedDay(day); setLimit(40); }}><span>{['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][index]}</span><strong>{day.slice(8)}</strong><span className="date-dot" style={{ visibility: filtered.some((game) => isoDay(game.date) === day) ? 'visible' : 'hidden' }} /></button>)}
     </div>
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-(--color-ink-3)">
-      <span aria-live="polite">{isPending ? 'Spielplan wird geladen …' : `${visible.length} ${visible.length === 1 ? 'Spiel' : 'Spiele'}${week === currentWeek ? ' diese Woche' : ''}`}</span>
-      <div className="flex items-center gap-3">
-        {week !== currentWeek && <button className="text-action" onClick={() => changeWeek(currentWeek)}>Heute</button>}
-        {mine && <button className={`text-action ${onlyMine ? '' : 'text-(--color-ink-2)'}`} aria-pressed={onlyMine} onClick={() => { setOnlyMine(!onlyMine); setLimit(40); }}><Icon name="star" size={15} />{onlyMine ? 'Meine Spiele' : 'Nur Favoriten'}</button>}
-      </div>
+      <span aria-live="polite">{isPending ? 'Spielplan wird geladen …' : countLabel}</span>
+      {week !== currentWeek && <button className="text-action" onClick={() => changeWeek(currentWeek)}>Heute</button>}
     </div>
-    {isPending ? <Loading /> : error ? <ErrorBox error={error} /> : !visible.length ? <Empty><Icon name="calendar" size={28} className="mx-auto mb-3 text-(--color-ink-3)" /><p className="font-semibold text-(--color-ink)">Keine Spiele in dieser Auswahl</p><p className="mt-2">Wähle einen anderen Tag, eine andere Woche oder Liga.</p>{(selectedDay !== 'all' || league !== 'all' || onlyMine) && <button className="text-action mt-3" onClick={() => { setSelectedDay('all'); setLeague('all'); setOnlyMine(false); }}>Filter zurücksetzen<Icon name="arrow" size={16} /></button>}</Empty> : <>
-      {[...groups].map(([day, list]) => <div key={day}><h2 className="day-heading">{relativeDay(day)}<span>{filtered.filter((game) => isoDay(game.date) === day).length} Spiele</span></h2><GameList games={list} showDate={false} leagueTag={(game) => tags.get(game.leagueId) ?? ''} /></div>)}
+    {!mine && !isPending && <div className="favorite-hint"><Icon name="star" size={18} /><span className="min-w-0 flex-1">Wähle deine Teams oder Ligen, dann siehst du hier zuerst deren Spiele.</span><button className="text-action" onClick={onEditFavorites}>Auswählen<Icon name="arrow" size={14} /></button></div>}
+    {isPending ? <Loading /> : error ? <ErrorBox error={error} /> : !visible.length ? <Empty><Icon name="calendar" size={28} className="mx-auto mb-3 text-(--color-ink-3)" /><p className="font-semibold text-(--color-ink)">{scope === 'mine' ? 'Deine Teams spielen hier nicht' : 'Keine Spiele in dieser Auswahl'}</p><p className="mt-2">Wähle einen anderen Tag oder eine andere Woche.</p>{scope === 'mine' ? <button className="text-action mt-3" onClick={() => setScope('all')}>Alle Ligen zeigen<Icon name="arrow" size={16} /></button> : selectedDay !== 'all' && <button className="text-action mt-3" onClick={() => setSelectedDay('all')}>Ganze Woche zeigen<Icon name="arrow" size={16} /></button>}</Empty> : scope === 'all' ? <>
+      <div className="league-groups">{leagueGroups.map(({ league, games: list }) => <LeagueGroup key={league.id} league={league} games={list} open={openShorts.includes(league.short)} onToggle={() => toggleLeague(league.short)} showDate={selectedDay === 'all'} />)}</div>
+    </> : <>
+      {[...dayGroups].map(([day, list]) => <div key={day}><h2 className="day-heading">{relativeDay(day)}<span>{filtered.filter((game) => isoDay(game.date) === day).length} Spiele</span></h2><GameList games={list} showDate={false} leagueTag={tag} /></div>)}
       {visible.length > limit && <button className="button-secondary mt-4 w-full" onClick={() => setLimit((value) => value + 40)}>Weitere {Math.min(40, visible.length - limit)} Spiele anzeigen<Icon name="chevron-right" size={15} /></button>}
       <MatchdayHighlights games={visible} />
     </>}
@@ -141,18 +179,18 @@ export function HomePage() {
   if (!meta) return <ErrorBox error={error} />;
   if (!meta.leagues.length) return <Empty>Der Spielplan für diese Saison wird vorbereitet. Wähle oben eine andere Saison.</Empty>;
   const myTeams = (meta.teams ?? []).filter((team) => favoriteIds.has(team.id));
-  const featuredLeagues = [...myLeagues, ...meta.leagues.filter((league) => !favoriteLeagues.includes(league.short))].slice(0, 5);
+  const editFavorites = () => { setEditing(true); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   return <div>
     <div className="page-heading"><div><p className="page-eyebrow">Baden-Württemberg · {meta.leagues.length} Ligen</p><h1 className="page-title">Dein Spieltag.</h1><p className="page-subtitle">Ergebnisse, Spielpläne und alles, was auf dem Feld passiert.</p></div><button className="button-secondary" onClick={() => setEditing(!editing)} aria-expanded={editing} aria-label="Favoriten bearbeiten"><Icon name="settings" size={17} /><span className="button-label">Favoriten</span></button></div>
     <ImportBanner onImported={() => setEditing(false)} />
     {editing && <FavoritesSetup meta={meta} onDone={() => setEditing(false)} />}
+    <LeagueShortcuts leagues={meta.leagues} />
     {live > 0 && <Link to="/live" className="live-banner"><LiveBadge /><span>{live} {live === 1 ? 'Spiel läuft' : 'Spiele laufen'} gerade</span><Icon name="arrow" size={19} /></Link>}
-    <div className="home-grid"><div className="min-w-0"><MatchCenter key={meta.season} meta={meta} mine={mine} /></div><aside className="home-sidebar" aria-label="Deine Teams und Ligen">
-      <Section title="Deine Teams" action={mine ? <button className="text-action" onClick={() => { setEditing(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Bearbeiten</button> : undefined}>
-        {myTeams.length ? <><div>{myTeams.slice(0, 6).map((team) => <Link key={team.id} to={`/team/${team.id}`} className="favorite-team"><TeamLogo teamId={team.id} name={team.name} size={30} /><span className="min-w-0 flex-1"><span className="favorite-team-name block">{team.name}</span><span className="mt-1 block text-[10px] text-(--color-ink-3)">{leagueLabel(meta.leagues.find((league) => league.id === team.leagueId)?.short ?? '')}</span></span><Icon name="chevron-right" size={15} className="text-(--color-ink-3)" /></Link>)}</div>{myTeams.length > 6 && <button className="text-action mt-2" onClick={() => setEditing(true)}>Alle {myTeams.length} Favoriten bearbeiten</button>}</> : <div className="favorite-prompt"><Icon name="star" size={22} className="mb-3 text-(--color-brand)" /><h3 className="text-sm font-semibold">Dein Verein. Direkt hier.</h3><p>Speichere deine Teams und finde ihre Spiele auf einen Blick.</p><button className="button-secondary" onClick={() => { setEditing(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Teams auswählen<Icon name="arrow" size={15} /></button></div>}
+    <div className="home-grid"><div className="min-w-0"><MatchCenter key={meta.season} meta={meta} mine={mine} onEditFavorites={editFavorites} /></div><aside className="home-sidebar" aria-label="Deine Teams und Ligen">
+      <Section title="Deine Teams" action={mine ? <button className="text-action" onClick={editFavorites}>Bearbeiten</button> : undefined}>
+        {myTeams.length ? <><div>{myTeams.slice(0, 6).map((team) => <Link key={team.id} to={`/team/${team.id}`} className="favorite-team"><TeamLogo teamId={team.id} name={team.name} size={30} /><span className="min-w-0 flex-1"><span className="favorite-team-name block">{team.name}</span><span className="mt-1 block text-[10px] text-(--color-ink-3)">{leagueLabel(meta.leagues.find((league) => league.id === team.leagueId)?.short ?? '')}</span></span><Icon name="chevron-right" size={15} className="text-(--color-ink-3)" /></Link>)}</div>{myTeams.length > 6 && <button className="text-action mt-2" onClick={() => setEditing(true)}>Alle {myTeams.length} Favoriten bearbeiten</button>}</> : <div className="favorite-prompt"><Icon name="star" size={22} className="mb-3 text-(--color-brand)" /><h3 className="text-sm font-semibold">Dein Verein. Direkt hier.</h3><p>Speichere deine Teams und finde ihre Spiele auf einen Blick.</p><button className="button-secondary" onClick={editFavorites}>Teams auswählen<Icon name="arrow" size={15} /></button></div>}
         {(favorites.length > 0 || favoriteLeagues.length > 0) && <div className="mt-2"><ShareButton teams={favorites} leagues={favoriteLeagues} /></div>}
       </Section>
-      <Section title={myLeagues.length ? 'Deine Ligen & mehr' : 'Ligen entdecken'} action={<TextLink to="/ligen">Alle {meta.leagues.length}<Icon name="arrow" size={14} /></TextLink>}><LeagueDirectory leagues={featuredLeagues} teams={meta.teams ?? []} stars={false} /><Link to="/ligen" className="text-action mt-3">Alle Tabellen & Spielpläne<Icon name="arrow" size={15} /></Link></Section>
     </aside></div>
   </div>;
 }

@@ -6,7 +6,7 @@ import test from 'node:test';
 import type { RawGame, RawScore } from '../shared/h4a.ts';
 import type { Game, League, Meta, SiteIndex } from '../shared/types.ts';
 import { config } from '../pipeline/config.ts';
-import { exportAll } from '../pipeline/export.ts';
+import { exportAll, reportPending } from '../pipeline/export.ts';
 import { write } from '../pipeline/store.ts';
 import { detailCandidates, keys, shouldRefreshLeague, syncDetails } from '../pipeline/sync.ts';
 import { resolveTeamNames } from '../pipeline/teams.ts';
@@ -126,4 +126,17 @@ test('offline export preserves data freshness and publishes only available leagu
     globalThis.fetch = original.fetch;
     await fs.rm(temporary, { recursive: true, force: true });
   }
+});
+
+test('the missing-report notice ignores reports that will not come', () => {
+  const now = Date.parse('2026-10-26T12:00:00Z');
+  const day = 24 * 3600_000;
+  const game = (ts: number, reportId: number | null) => ({ id: 1, ts, reportId, status: 'finished' }) as Game;
+  assert.equal(reportPending(game(now - day, 5), false, true, now), true, 'a fresh match day still waits for reports');
+  assert.equal(reportPending(game(now - day, null), false, false, now), true, 'the PDF link can appear a few hours late');
+  assert.equal(reportPending(game(now - 30 * day, 5), false, false, now), true, 'older reports not yet tried are still coming');
+  assert.equal(reportPending(game(now - 30 * day, null), false, false, now), false, 'h4a never published this report');
+  assert.equal(reportPending(game(now - 30 * day, 5), false, true, now), false, 'a report failing for a week is given up');
+  assert.equal(reportPending(game(now - day, 5), true, false, now), false);
+  assert.equal(reportPending({ ...game(now - day, 5), status: 'scheduled' } as Game, false, false, now), false);
 });

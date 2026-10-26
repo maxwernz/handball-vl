@@ -9,7 +9,7 @@ test('installed app shell and visited results remain readable offline', async ({
   await expect(page.getByRole('heading', { name: 'Dein Spieltag.' })).toBeVisible();
   await page.evaluate(async () => { await navigator.serviceWorker.ready; });
   await page.reload();
-  await expect(page.locator('.game-row').first()).toBeVisible();
+  await expect(page.locator('.league-group').first()).toBeVisible();
   await expect.poll(() => page.evaluate(async () => {
     const cache = await caches.open('api');
     return (await cache.keys()).some((request) => request.url.endsWith('/games.json'));
@@ -17,7 +17,7 @@ test('installed app shell and visited results remain readable offline', async ({
   await context.setOffline(true);
   await page.reload();
   await expect(page.getByText('Du bist offline.', { exact: true })).toBeVisible();
-  await expect(page.locator('.game-row').first()).toBeVisible();
+  await expect(page.locator('.league-group').first()).toBeVisible();
   await context.setOffline(false);
   await expect(page.getByText('Du bist offline.', { exact: true })).toHaveCount(0);
 });

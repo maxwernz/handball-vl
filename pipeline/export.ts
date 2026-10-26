@@ -113,6 +113,24 @@ async function exportLogos(data: SeasonData) {
   return { logos, colors };
 }
 
+const GIVE_UP_MS = 7 * 24 * 3600_000;
+
+/** A missing report still counts as "coming" unless h4a never offered one or it kept failing for a week. */
+export function reportPending(game: Game, hasReport: boolean, failedAttempt: boolean, now = Date.now()) {
+  if (game.status !== 'finished' || hasReport) return false;
+  return now - game.ts < GIVE_UP_MS || (game.reportId !== null && !failedAttempt);
+}
+
+async function pendingReports(data: SeasonData) {
+  const pending: Record<number, number> = {};
+  for (const game of data.games) {
+    if (game.status !== 'finished' || data.reports.has(game.id)) continue;
+    const failed = await exists(keys.reportAttempt(game.id));
+    if (reportPending(game, false, failed)) pending[game.leagueId] = (pending[game.leagueId] ?? 0) + 1;
+  }
+  return pending;
+}
+
 async function exportSeason(season: number, current: boolean) {
   const data = await seasonData(season);
   const base = `s/${season}`;
@@ -123,7 +141,7 @@ async function exportSeason(season: number, current: boolean) {
     leagues: data.leagues.map(toRef),
     ...(await exportLogos(data)),
     teams: data.leagues.flatMap((l) => l.teams.map((t) => ({ id: t.id, name: t.name, leagueId: l.id }))),
-    incomplete: data.games.some((game) => game.status === 'finished' && !data.reports.has(game.id)),
+    pendingReports: await pendingReports(data),
   };
   await emit(`${base}/meta`, meta);
   await emit(`${base}/games`, [...data.games].sort((a, b) => a.ts - b.ts));

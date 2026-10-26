@@ -267,8 +267,11 @@ export interface Meta {
   colors?: Record<number, string>;
   /** All teams of the season, so favorites (stored by name) can be resolved to ids anywhere. */
   teams: { id: number; name: string; leagueId: number }[];
-  /** Whether match reports of this season are still being downloaded. */
-  incomplete: boolean;
+  /**
+   * Finished games per league id whose match report is still expected. Reports
+   * h4a never published, or that kept failing for a week, are not counted.
+   */
+  pendingReports: Record<number, number>;
 }
 
 export interface GameDetail {

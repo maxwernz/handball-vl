@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMeta } from '../api.ts';
 import { Icon } from '../components/Icon.tsx';
-import { LeagueDirectory, leagueCategory } from '../components/LeagueDirectory.tsx';
+import { LeagueDirectory, LeagueShortcuts, leagueCategory } from '../components/LeagueDirectory.tsx';
 import { Chips, Empty, ErrorBox, Loading } from '../components/ui.tsx';
 import { useFavoriteLeagues } from '../lib/favorites.ts';
 import { matcher } from '../lib/search.ts';
@@ -20,6 +20,7 @@ export function LeaguesPage() {
   if (!meta) return <ErrorBox error={error} />;
   return <div className="directory-layout">
     <div className="page-heading"><div><p className="page-eyebrow">Baden-Württemberg</p><h1 className="page-title">Alle Ligen</h1><p className="page-subtitle">{meta.leagues.length} Wettbewerbe. Tabellen, Spielpläne und die Zahlen zum Spiel.</p></div><Icon name="leagues" size={37} className="hidden text-(--color-ink-3) sm:block" /></div>
+    <LeagueShortcuts leagues={meta.leagues} all={false} />
     <div className="directory-filters"><div className="search-field"><Icon name="search" size={18} /><input type="search" className="field" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Liga oder Staffel suchen" aria-label="Liga oder Staffel suchen" /></div></div>
     <Chips options={[{ id: 'all', label: 'Alle' }, { id: 'Männer', label: 'Männer' }, { id: 'Frauen', label: 'Frauen' }, { id: 'favorites', label: 'Meine Ligen' }]} value={filter} onChange={setFilter} />
     {leagues.length === 0 ? <Empty>{filter === 'favorites' && !query ? 'Markiere eine Liga mit dem Stern, damit du sie hier schnell wiederfindest.' : 'Keine passende Liga gefunden. Versuche einen anderen Suchbegriff oder Filter.'}</Empty> : <div className="directory-groups">{['Männer', 'Frauen', 'Weitere'].map((category) => {

@@ -25,7 +25,12 @@ test('match center, league discovery, filters and favorites work', async ({ page
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('./');
   await expect(page.getByRole('heading', { name: 'Dein Spieltag.' })).toBeVisible();
-  await expect(page.locator('.game-row').first()).toBeVisible();
+  // Without favorites every league starts collapsed, with a direct link to its table.
+  const group = page.locator('.league-group').first();
+  await expect(group).toBeVisible();
+  await expect(page.locator('.game-row')).toHaveCount(0);
+  await group.locator('.league-group-toggle').click();
+  await expect(group.locator('.game-row').first()).toBeVisible();
   await fits(page);
   await page.screenshot({ path: info.outputPath('home.png'), fullPage: true });
   await page.getByRole('button', { name: 'Favoriten bearbeiten' }).click();
@@ -35,6 +40,16 @@ test('match center, league discovery, filters and favorites work', async ({ page
   await expect(page.locator('.favorite-option[aria-pressed="true"]').first()).toBeVisible();
   await page.getByRole('button', { name: 'Fertig', exact: true }).click();
   await expect(page.locator('.favorite-team').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Meine Spiele' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Alle Ligen', exact: true }).click();
+  await page.locator('.league-group-table').first().click();
+  await expect(page).toHaveURL(/liga\/\d+$/);
+  await expect(page.getByRole('tab', { name: 'Tabelle' })).toBeVisible();
+  await page.goto('./');
+  // The chosen view and the visited league are remembered.
+  await expect(page.getByRole('button', { name: 'Alle Ligen', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.league-shortcut').first()).toBeVisible();
+  await fits(page);
   await page.goto('ligen');
   await expect(page.getByRole('heading', { name: 'Alle Ligen', exact: true })).toBeVisible();
   await expect(page.locator('.league-directory-row')).toHaveCount(meta.leagues.length);

@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useEffect } from 'react';
-import { useIndex, useLiveGames, useMeta, useSeasonId } from '../api.ts';
+import { useIndex, useLiveGames, useSeasonId } from '../api.ts';
 import { useSeason } from '../lib/season.tsx';
 import { AppStatus } from './AppStatus.tsx';
 import { Icon, type IconName } from './Icon.tsx';
@@ -31,7 +31,6 @@ const navigation: { to: string; label: string; icon: IconName; end?: boolean }[]
   { to: '/suche', label: 'Suche', icon: 'search' },
 ];
 export function Layout() {
-  const { data: meta } = useMeta();
   const { data: index, error: indexError, isPending: indexPending } = useIndex();
   const live = useLiveGames().filter((g) => g.status === 'live').length;
   const location = useLocation();
@@ -60,7 +59,6 @@ export function Layout() {
       <main id="main-content" className="page-shell" tabIndex={-1}>
         <AppStatus />
         {stale && <div className="status-notice" role="status">Letzter Datenstand: {updated ?? 'unbekannt'} Uhr. Neue Ergebnisse werden geladen, sobald sie verfügbar sind.</div>}
-        {meta?.incomplete && <div className="status-notice">Spielberichte werden ergänzt. Statistiken können noch unvollständig sein.</div>}
         {!index && indexPending ? <Loading /> : !index && indexError ? <ErrorBox error={indexError} /> : <Outlet />}
       </main>
       <footer className="app-footer">

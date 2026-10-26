@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMeta, useStats } from '../api.ts';
+import { ReportsNotice } from '../components/ReportsNotice.tsx';
 import { LeagueSummaryView } from '../components/LeagueSummary.tsx';
 import { PLAYER_VIEWS, PlayerTable, TeamTable, TeamViewChips, type PlayerView, type TeamView } from '../components/StatTables.tsx';
 import { Chips, ErrorBox, Loading, Section, StatTile } from '../components/ui.tsx';
@@ -34,6 +35,7 @@ export function StatsPage() {
           <option value="all">Alle Ligen</option>{(meta?.leagues ?? []).map((ref) => <option key={ref.id} value={ref.id}>{ref.name}</option>)}
         </select>
       </label>
+      <ReportsNotice leagueId={league === 'all' ? null : league} />
       {isLoading ? (
         <Loading />
       ) : !data ? (

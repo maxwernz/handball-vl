@@ -4,16 +4,16 @@ import type { Game, League } from '../../../shared/types.ts';
 import { useLeague, useStats } from '../api.ts';
 import { RankChart, SERIES_COLORS } from '../components/charts.tsx';
 import { GameList } from '../components/GameRow.tsx';
+import { ReportsNotice } from '../components/ReportsNotice.tsx';
 import { LeagueSummaryView } from '../components/LeagueSummary.tsx';
 import { StandingsTable } from '../components/StandingsTable.tsx';
 import { UnitTable } from '../components/UnitTable.tsx';
 import { PLAYER_VIEWS, PlayerTable, TeamTable, TeamViewChips, type PlayerView, type TeamView } from '../components/StatTables.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Chips, Empty, ErrorBox, FavoriteStar, Loading, Section, Tabs } from '../components/ui.tsx';
-import { toggleFavoriteLeague, useFavoriteLeagues, useFavoriteTeamIds } from '../lib/favorites.ts';
+import { rememberLeague, toggleFavoriteLeague, useFavoriteLeagues, useFavoriteTeamIds } from '../lib/favorites.ts';
 import { formatDay, isoDay } from '../lib/format.ts';
 import { currentRound, rankHistory, tableFor, type TableView, type Unit } from '../lib/standings.ts';
-import { storage } from '../lib/storage.ts';
 import { useTabSwipe } from '../lib/swipe.ts';
 
 type Tab = 'table' | 'schedule' | 'history' | 'stats';
@@ -175,6 +175,7 @@ function StatsTab({ league }: { league: League }) {
   if (error || !data) return <ErrorBox error={error} />;
   return (
     <>
+      <ReportsNotice leagueId={league.id} />
       <p className="mb-4 px-1 text-xs text-(--color-ink-3)">
         Aus {data.reports} von {data.finished} Spielberichten ausgewertet.
       </p>
@@ -205,7 +206,7 @@ export function LeaguePage() {
   const { data: league, isLoading, error } = useLeague(id);
   const favoriteLeagues = useFavoriteLeagues();
 
-  useEffect(() => storage.set('lastLeague', String(id)), [id]);
+  useEffect(() => { if (league) rememberLeague(league.short); }, [league]);
 
   if (isLoading) return <Loading />;
   if (!league) return <ErrorBox error={error} />;

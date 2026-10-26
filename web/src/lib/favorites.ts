@@ -41,6 +41,10 @@ function listStore(key: string) {
 
 const teams = listStore('favorites');
 const leagues = listStore('favoriteLeagues');
+// Device-local view settings, kept by league short name like the favorites.
+const recentLeagues = listStore('recentLeagues');
+const openLeagues = listStore('openLeagues');
+const RECENT_LEAGUES = 4;
 
 export function toggleFavorite(name: string, leagueShort: string) {
   const current = teams.load();
@@ -64,6 +68,24 @@ export function useFavorites(): string[] {
 /** Favorite leagues by short name (e.g. "M-VL-1-BW"). */
 export function useFavoriteLeagues(): string[] {
   return useSyncExternalStore(leagues.subscribe, leagues.load);
+}
+
+/** Leagues opened most recently, newest first. */
+export function rememberLeague(short: string) {
+  const current = recentLeagues.load();
+  if (current[0] !== short) recentLeagues.set([short, ...current.filter((value) => value !== short)].slice(0, RECENT_LEAGUES));
+}
+export function useRecentLeagues(): string[] {
+  return useSyncExternalStore(recentLeagues.subscribe, recentLeagues.load);
+}
+
+/** Leagues the person expanded on the match day overview; null until they change one. */
+export function useOpenLeagues(): string[] | null {
+  const list = useSyncExternalStore(openLeagues.subscribe, openLeagues.load);
+  return storage.get('openLeagues') === null ? null : list;
+}
+export function setOpenLeagues(shorts: string[]) {
+  openLeagues.set(shorts);
 }
 
 /** Ids of the favorite teams in the selected season. */

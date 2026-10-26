@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import type { LeagueRef, Meta } from '../../../shared/types.ts';
-import { toggleFavoriteLeague, useFavoriteLeagues } from '../lib/favorites.ts';
+import { leagueLabel } from '../lib/format.ts';
+import { toggleFavoriteLeague, useFavoriteLeagues, useRecentLeagues } from '../lib/favorites.ts';
 import { Icon } from './Icon.tsx';
 import { FavoriteStar } from './ui.tsx';
 
@@ -21,4 +22,19 @@ export function LeagueDirectory({ leagues, teams, stars = true }: { leagues: Lea
       {stars && <FavoriteStar on={favorites.includes(league.short)} onClick={() => toggleFavoriteLeague(league.short)} />}
     </div>;
   })}</div>;
+}
+
+/** One tap to the table of favorite and recently opened leagues. */
+export function LeagueShortcuts({ leagues, all = true }: { leagues: LeagueRef[]; all?: boolean }) {
+  const favorites = useFavoriteLeagues();
+  const recent = useRecentLeagues();
+  const shorts = [...new Set([...favorites, ...recent])];
+  const list = shorts.flatMap((short) => leagues.filter((league) => league.short === short)).slice(0, 8);
+  if (!list.length && !all) return null;
+  return <nav className="league-shortcuts scrollbar-none" aria-label="Schnellzugriff Ligen">
+    {list.map((league) => <Link key={league.id} to={`/liga/${league.id}`} className="league-shortcut" title={league.name}>
+      {favorites.includes(league.short) ? <Icon name="star" size={13} /> : <Icon name="leagues" size={13} />}{leagueLabel(league.short)}
+    </Link>)}
+    {all && <Link to="/ligen" className="league-shortcut is-muted">{list.length ? 'Alle Ligen' : 'Tabellen aller Ligen'}<Icon name="arrow" size={13} /></Link>}
+  </nav>;
 }
