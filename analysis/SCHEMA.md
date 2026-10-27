@@ -38,7 +38,8 @@ offiziellen h4a-Spielberichten. Nur Lesen. Abfragen mit SQLite-SQL über das Wer
 `id`, `league_id`, `season_id`, `round` (Spieltag), `kickoff` ('YYYY-MM-DD HH:MM', Ortszeit), `date`, `weekday` ('Mo'…'So'),
 `status` ('scheduled', 'live', 'finished'), `home_id`, `guest_id`, `home`, `guest`, `home_goals`, `guest_goals`,
 `home_goals_ht`, `guest_goals_ht` (Halbzeit), `venue`, `town`, `comment`, `has_report`, `spectators`, `referees`,
-`duration` (Spielzeit in Sekunden laut Bericht, ≥ 3600).
+`duration` (Spielzeit in Sekunden laut Bericht, ≥ 3600), `game_no` (h4a-Spielnummer, z. B. '901216'; dieselbe Nummer
+nutzen das Phönix-Videoportal und der Tacticut-MCP).
 
 ### team_games — jedes Spiel aus Sicht beider Teams (2 Zeilen pro Spiel)
 `game_id`, `league_id`, `team_id`, `team`, `opponent_id`, `opponent`, `is_home`, `kickoff`, `round`, `status`,

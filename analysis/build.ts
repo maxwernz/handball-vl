@@ -17,7 +17,7 @@ CREATE TABLE standings (league_id INTEGER, team_id INTEGER, rank INTEGER, played
   goals_for INTEGER, goals_against INTEGER, goal_diff INTEGER, points INTEGER, points_against INTEGER);
 CREATE TABLE games (id INTEGER PRIMARY KEY, league_id INTEGER, season_id INTEGER, round INTEGER, kickoff TEXT, date TEXT, weekday TEXT, status TEXT,
   home_id INTEGER, guest_id INTEGER, home TEXT, guest TEXT, home_goals INTEGER, guest_goals INTEGER, home_goals_ht INTEGER, guest_goals_ht INTEGER,
-  venue TEXT, town TEXT, comment TEXT, has_report INTEGER, spectators INTEGER, referees TEXT, duration INTEGER);
+  venue TEXT, town TEXT, comment TEXT, has_report INTEGER, spectators INTEGER, referees TEXT, duration INTEGER, game_no TEXT);
 CREATE TABLE team_games (game_id INTEGER, league_id INTEGER, team_id INTEGER, team TEXT, opponent_id INTEGER, opponent TEXT, is_home INTEGER,
   kickoff TEXT, round INTEGER, status TEXT, goals_for INTEGER, goals_against INTEGER, ht_for INTEGER, ht_against INTEGER, result TEXT, has_report INTEGER);
 CREATE TABLE players (game_id INTEGER, team_id INTEGER, player_key TEXT, no TEXT, name TEXT, is_official INTEGER, goals INTEGER,
@@ -47,6 +47,7 @@ CREATE TABLE strength_phases (game_id INTEGER, team_id INTEGER, opponent_id INTE
 `;
 const INDEXES = `
 CREATE INDEX games_league ON games(league_id);
+CREATE INDEX games_no ON games(game_no);
 CREATE INDEX team_games_team ON team_games(team_id);
 CREATE INDEX team_games_game ON team_games(game_id);
 CREATE INDEX players_game ON players(game_id, team_id);
@@ -86,7 +87,7 @@ export function buildDatabase(dataDir: string, outFile: string) {
   const insert = (table: string, columns: number) => db.prepare(`INSERT INTO ${table} VALUES (${Array(columns).fill('?').join(',')})`);
   const q = {
     meta: insert('meta', 2), season: insert('seasons', 3), league: insert('leagues', 9), team: insert('teams', 4), standing: insert('standings', 12),
-    game: insert('games', 23), teamGame: insert('team_games', 16), player: insert('players', 14), event: insert('events', 18),
+    game: insert('games', 24), teamGame: insert('team_games', 16), player: insert('players', 14), event: insert('events', 18),
     penalty: insert('penalties', 15), phase: insert('strength_phases', 16),
   };
   let reports = 0;
@@ -134,7 +135,7 @@ function addGame(q: Statements, league: League, seasonId: number, game: Game, re
   const weekday = WEEKDAYS[new Date(`${game.date.slice(0, 10)}T12:00:00Z`).getUTCDay()];
   q.game.run(game.id, league.id, seasonId, game.round, kickoff, game.date.slice(0, 10), weekday, game.status, game.homeId, game.guestId, game.home, game.guest,
     game.homeGoals, game.guestGoals, game.homeGoalsHt, game.guestGoalsHt, game.venue?.name ?? null, game.venue?.town ?? null, game.comment || null,
-    Number(!!report), report?.spectators ?? null, report?.referees.join(', ') || null, report ? duration : null);
+    Number(!!report), report?.spectators ?? null, report?.referees.join(', ') || null, report ? duration : null, game.no || null);
 
   const ids: Record<Side, number | null> = { home: game.homeId, guest: game.guestId };
   const goals = (side: Side, which: 'full' | 'ht') => side === 'home' ? (which === 'full' ? game.homeGoals : game.homeGoalsHt) : (which === 'full' ? game.guestGoals : game.guestGoalsHt);

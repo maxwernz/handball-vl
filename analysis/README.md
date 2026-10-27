@@ -34,3 +34,20 @@ npm run analyse:update   # Datenstand holen und analysis/handball.db bauen
 
 Die Datenbank wird beim ersten Aufruf gebaut und frischt sich auf, wenn sie älter als drei Stunden ist.
 Über- und Unterzahl werden aus den Strafen berechnet (`shared/strength.ts`, dieselbe Logik wie in der App).
+
+Die Spielnummer (`games.game_no`) ist dieselbe wie im Phönix-Videoportal. Der Tacticut-MCP
+(`VideoAnalyseTS/mcp`) nutzt sie, um Momente aus diesen Daten als Clips aus den Spielvideos zu schneiden.
+
+## Statistikseite im Browser
+
+Dieselbe Datenbank ist auch als Webseite unter `<App-Adresse>/analyse/` veröffentlicht (der Workflow baut sie
+bei jedem Lauf mit). Die Seite lädt die Datenbank (~4 MB, gzip) und rechnet alles im Browser mit SQLite (sql.js):
+Ligen- und Teamvergleiche, Verteilungen, Spielverlauf, Auszeiten, Über-/Unterzahl, Spieler, Spielliste,
+Streudiagramme mit Regression sowie eine freie SQL-Konsole mit Diagrammen. Jede Tabelle lässt sich als CSV exportieren.
+
+```sh
+npm run analyse:update   # lokale Datenbank bauen
+npm run analyse:web      # Statistikseite lokal starten
+```
+
+Code: `analysis/web`, Build-Konfiguration: `vite.analyse.config.ts`, Veröffentlichung: `analysis/publish.ts`.

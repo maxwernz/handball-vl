@@ -66,6 +66,8 @@ jobs:
           repo="${GITHUB_REPOSITORY#*/}"
           if [[ "$repo" == *.github.io ]]; then export BASE_PATH=/; else export BASE_PATH="/$repo/"; fi
           npm run build
+          # Statistikseite /analyse/: die SQLite-Datenbank aus demselben Datenstand
+          npm run analyse:publish -- data dist/analyse
 
       - name: Browser-Prüfung vor Veröffentlichung
         if: github.event_name != 'schedule'
