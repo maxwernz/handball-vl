@@ -27,7 +27,7 @@ function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
   return {
     tab: (TABS.some(([t]) => t === p.get('tab')) ? p.get('tab') : 'overview') as Tab,
-    filters: { season: Number(p.get('s')) || 0, gender: p.get('g') ?? '', level: p.get('lv') ?? '', league: Number(p.get('l')) || 0, team: Number(p.get('t')) || 0 },
+    filters: { season: Number(p.get('s')) || 0, gender: p.get('g') === 'Frauen' ? 'Frauen' : 'Männer', level: p.get('lv') ?? '', league: Number(p.get('l')) || 0, team: Number(p.get('t')) || 0 },
   };
 }
 
@@ -84,7 +84,7 @@ function App() {
       </header>
       <div className="filters">
         <Select label="Saison" value={f.season} options={seasons.map((s) => ({ value: s.id, label: s.name }))} onChange={(season) => set({ season })} />
-        <Select label="Geschlecht" value={f.gender} options={[{ value: '', label: 'Alle' }, { value: 'Männer', label: 'Männer' }, { value: 'Frauen', label: 'Frauen' }]} onChange={(gender) => set({ gender })} />
+        <Select label="Geschlecht" value={f.gender} options={[{ value: 'Männer', label: 'Männer' }, { value: 'Frauen', label: 'Frauen' }]} onChange={(gender) => set({ gender })} />
         <Select label="Spielklasse" value={f.level} options={[{ value: '', label: 'Alle' }, ...Object.entries(LEVELS).map(([value, label]) => ({ value, label }))]} onChange={(level) => set({ level })} />
         <Select label="Liga" value={f.league} options={[{ value: 0, label: 'Alle' }, ...leagues.map((l) => ({ value: l.id, label: `${l.short} – ${l.name}` }))]} onChange={(league) => set({ league })} />
         <Select label="Team" value={f.team} options={[{ value: 0, label: 'Alle' }, ...teams.map((t) => ({ value: t.id, label: t.name }))]} onChange={(team) => set({ team })} />

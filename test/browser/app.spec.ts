@@ -53,7 +53,8 @@ test('match center, league discovery, filters and favorites work', async ({ page
   await page.goto('ligen');
   await expect(page.getByRole('heading', { name: 'Alle Ligen', exact: true })).toBeVisible();
   await expect(page.locator('.league-directory-row')).toHaveCount(meta.leagues.length);
-  await page.getByRole('button', { name: 'Frauen', exact: true }).click();
+  // Men or women is chosen once in the header and applies everywhere.
+  await page.getByRole('combobox', { name: /Männer, Frauen/ }).selectOption('F');
   await expect(page.locator('.league-directory-row')).toHaveCount(meta.leagues.filter((l: any) => l.short.startsWith('F-')).length);
   await page.getByRole('searchbox').fill('Regionalliga');
   await expect(page.locator('.league-directory-row')).toHaveCount(1);

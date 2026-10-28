@@ -1,6 +1,7 @@
 // Global filters → SQL fragments. Values come from fixed option lists or ids and are escaped anyway.
 import { sqlText } from './db.ts';
 
+/** Men and women are never mixed: `gender` is always set. */
 export interface Filters { season: number; gender: string; level: string; league: number; team: number }
 
 export const LEVELS: Record<string, string> = { RL: 'Regionalliga', OL: 'Oberliga', VL: 'Verbandsliga', LL: 'Landesliga' };
@@ -24,7 +25,7 @@ export function gamesInScope(f: Filters, teamOnly = true) {
 }
 
 export function describeScope(f: Filters, leagues: { id: number; name: string }[], teams: { id: number; name: string }[]) {
-  const parts = [f.gender || 'Frauen + Männer', f.level ? LEVELS[f.level] : 'alle Spielklassen'];
+  const parts = [f.gender, f.level ? LEVELS[f.level] : 'alle Spielklassen'];
   if (f.league) parts.push(leagues.find((l) => l.id === f.league)?.name ?? '');
   if (f.team) parts.push(teams.find((t) => t.id === f.team)?.name ?? '');
   return parts.join(' · ');

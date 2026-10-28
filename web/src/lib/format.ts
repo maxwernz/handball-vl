@@ -52,7 +52,9 @@ export function leagueLabel(short: string) {
   return `${m[1]} · ${m[3] ? 'Aufstieg' : m[2]}${m[4] ? ` ${m[4]}` : ''}`;
 }
 
+/** Men first, then women; within each by level (RL → LL) and Staffel. */
 export function leagueOrder(a: { short: string }, b: { short: string }) {
+  const gender = (short: string) => (short.startsWith('M-') ? 0 : short.startsWith('F-') ? 1 : 2);
   const tier = (short: string) => ['RL', 'OL', 'VL', 'LL'].indexOf(short.split('-')[1]);
-  return tier(a.short) - tier(b.short) || Number(a.short.startsWith('F-')) - Number(b.short.startsWith('F-')) || a.short.localeCompare(b.short, 'de', { numeric: true });
+  return gender(a.short) - gender(b.short) || tier(a.short) - tier(b.short) || a.short.localeCompare(b.short, 'de', { numeric: true });
 }

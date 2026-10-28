@@ -1,7 +1,9 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { Game, MatchEvent } from '../../../shared/types.ts';
-import { useLiveSchedule } from '../api.ts';
+import { useLiveSchedule, useMeta } from '../api.ts';
+import { GENDER_LABEL, genderLookup, leagueGender, splitByGender, useGender } from '../lib/gender.ts';
+import { storage } from '../lib/storage.ts';
 import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Empty, ErrorBox, Loading, LiveBadge, Section, TextLink, useChanges } from '../components/ui.tsx';
 import { colorStyle, useTeamColors } from '../lib/colors.ts';
@@ -104,29 +106,56 @@ function Feed({ games, tickers }: { games: Game[]; tickers: Map<number, LiveGame
 
 /** All running games side by side, with the goals of all of them in one ticker. */
 export function LivePage() {
-  const { data: games, isPending, error } = useLiveSchedule(true);
+  const { data: allGames, isPending, error } = useLiveSchedule(true);
+  const { data: meta } = useMeta();
+  const gender = useGender();
+  const genderOf = genderLookup(meta?.leagues);
+  // The league is stored by its short name: ids change every season.
+  const [leagueShort, setLeagueState] = useState(() => storage.get('liveLeague') ?? 'all');
+  const setLeagueShort = (short: string) => { storage.set('liveLeague', short === 'all' ? null : short); setLeagueState(short); };
+  const leagueOptions = (meta?.leagues ?? []).filter((l) => gender === 'all' || leagueGender(l) === gender);
+  const league = leagueOptions.find((l) => l.short === leagueShort) ?? null;
+  const games = allGames.filter((g) => (league ? g.leagueId === league.id : gender === 'all' || genderOf(g.leagueId) === gender));
+  const sections = splitByGender(games, (g) => genderOf(g.leagueId), gender);
   const candidates = games.filter((g) => g.status === 'live');
   const tickers = useConference(candidates) ?? new Map<number, LiveGame>();
   const running = candidates.filter((g) => applyTickerResult(g, tickers.get(g.id)).status === 'live');
   const upcoming = games.filter((g) => g.status === 'scheduled');
-  const heading = <div className="page-heading"><div><p className="page-eyebrow">Das Spielgeschehen</p><h1 className="page-title">Live-Konferenz</h1><p className="page-subtitle">Laufende Spiele, die nächsten Anwürfe und aktuelle Endstände.</p></div></div>;
+  const counts = new Map<number, number>();
+  for (const g of allGames) counts.set(g.leagueId, (counts.get(g.leagueId) ?? 0) + 1);
+  const heading = <>
+    <div className="page-heading"><div><p className="page-eyebrow">Das Spielgeschehen</p><h1 className="page-title">Live-Konferenz</h1><p className="page-subtitle">Laufende Spiele, die nächsten Anwürfe und aktuelle Endstände.</p></div></div>
+    <label className="mb-5 block max-w-md text-xs font-semibold">Liga
+      <select className="field mt-2" value={league?.short ?? 'all'} onChange={(e) => setLeagueShort(e.target.value)}>
+        <option value="all">{gender === 'all' ? 'Alle Ligen' : `Alle ${GENDER_LABEL[gender]}-Ligen`}</option>
+        {splitByGender(leagueOptions, leagueGender).map((section) => <optgroup key={section.gender ?? 'other'} label={section.gender ? GENDER_LABEL[section.gender] : 'Weitere'}>
+          {section.items.map((l) => <option key={l.id} value={l.short}>{l.name}{counts.get(l.id) ? ` (${counts.get(l.id)})` : ''}</option>)}
+        </optgroup>)}
+      </select>
+    </label>
+  </>;
   if (isPending) return <>{heading}<Loading /></>;
   if (error) return <>{heading}<ErrorBox error={error} /></>;
   if (!games.length) {
     return (
       <>{heading}<Empty>
-        Gerade läuft kein Spiel. <TextLink to="/">Zum Spielplan</TextLink>
+        Gerade läuft kein Spiel{league ? ` in der ${league.name}` : gender !== 'all' ? ` der ${GENDER_LABEL[gender]}` : ''}. {league ? <TextLink to={`/liga/${league.id}`}>Zur Liga</TextLink> : <TextLink to="/">Zum Spielplan</TextLink>}
       </Empty></>
     );
   }
   return (
     <>{heading}<div className="grid gap-x-6 lg:grid-cols-2">
       <Section title={running.length ? `${running.length} ${running.length === 1 ? 'Spiel läuft' : 'Spiele laufen'}` : upcoming.length ? 'Gleich geht es los' : 'Gerade beendet'}>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {games.map((g) => (
-            <ScoreCard key={g.id} game={g} ticker={tickers.get(g.id)} />
-          ))}
-        </div>
+        {sections.map((section) => (
+          <div key={section.gender ?? 'other'}>
+            {gender === 'all' && sections.length > 1 && <h3 className="gender-heading">{section.gender ? GENDER_LABEL[section.gender] : 'Weitere'}<span>{section.items.length}</span></h3>}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {section.items.map((g) => (
+                <ScoreCard key={g.id} game={g} ticker={tickers.get(g.id)} />
+              ))}
+            </div>
+          </div>
+        ))}
       </Section>
       {running.length > 0 && (
         <Section title="Alle Tore">

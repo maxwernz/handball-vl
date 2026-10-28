@@ -242,7 +242,8 @@ export function useTeam(id: number) {
   });
 }
 
-export function useStats(league: number | null) {
+/** One league (id), all men's ('M') or women's ('F') leagues, or everything (null; for search). */
+export function useStats(league: number | 'M' | 'F' | null) {
   const season = useSeasonId();
   return useQuery({
     queryKey: ['stats', season, league],

@@ -130,7 +130,7 @@ export function StatTile({ label, value, hint }: { label: string; value: ReactNo
   return (
     <div className="card px-3 py-3">
       <div className="text-xs text-(--color-ink-3)">{label}</div>
-      <div className="tabular mt-0.5 text-2xl font-bold">{value}</div>
+      <div className="tabular mt-0.5 text-2xl font-bold">{typeof value === 'number' ? value.toLocaleString('de-DE') : value}</div>
       {hint && <div className="mt-0.5 text-xs text-(--color-ink-2)">{hint}</div>}
     </div>
   );

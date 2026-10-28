@@ -5,13 +5,13 @@ import { TeamLogo } from './TeamLogo.tsx';
 import { Section } from './ui.tsx';
 
 /** The selected matchday's highlights, using only available, validated reports. */
-export function MatchdayHighlights({ games }: { games: Game[] }) {
+export function MatchdayHighlights({ games, title = 'Höhepunkte der Auswahl' }: { games: Game[]; title?: string }) {
   const { data: scorers } = useTopScorers();
   const finished = games.filter((game) => game.status === 'finished' && game.homeGoals !== null && game.guestGoals !== null);
   if (!finished.length) return null;
   const best = finished.flatMap((game) => (scorers?.[game.id] ?? []).map((scorer) => ({ game, scorer }))).sort((a, b) => b.scorer.goals - a.scorer.goals).slice(0, 3);
   const highest = finished.reduce((a, b) => Math.abs(b.homeGoals! - b.guestGoals!) > Math.abs(a.homeGoals! - a.guestGoals!) ? b : a);
-  return <div className="mt-7"><Section title="Höhepunkte der Auswahl">
+  return <div className="mt-7"><Section title={title}>
     <div className="border-t border-(--color-line)">
       {best.map(({ game, scorer }) => <div key={`${game.id}-${scorer.key}`} className="flex items-center gap-3 border-b border-(--color-line) py-3 text-sm">
         <TeamLogo teamId={scorer.teamId} name={scorer.team} size={28} />

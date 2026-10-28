@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { GENDER_LABEL, leagueGender, splitByGender, useGender, type Gender } from '../lib/gender.ts';
 import { useMeta, useStats } from '../api.ts';
 import { ReportsNotice } from '../components/ReportsNotice.tsx';
 import { LeagueSummaryView } from '../components/LeagueSummary.tsx';
@@ -8,11 +9,16 @@ import { leagueLabel, perGame } from '../lib/format.ts';
 
 export function StatsPage() {
   const { data: meta } = useMeta();
-  const [league, setLeague] = useState<number | 'all'>('all');
+  const gender = useGender();
+  // Never all leagues at once: men's and women's rankings are separate. Follows the header choice until a league is picked.
+  const [picked, setPicked] = useState<{ value: number | Gender; for: typeof gender } | null>(null);
+  const league: number | Gender = picked && picked.for === gender ? picked.value : gender === 'F' ? 'F' : 'M';
+  const setLeague = (value: number | Gender) => setPicked({ value, for: gender });
+  const aggregate = typeof league !== 'number';
   const [playerView, setPlayerView] = useState<PlayerView>('goals');
   const [teamView, setTeamView] = useState<TeamView>('attack');
   const [query, setQuery] = useState('');
-  const { data, isLoading, error } = useStats(league === 'all' ? null : league);
+  const { data, isLoading, error } = useStats(league);
 
   const players = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -31,11 +37,16 @@ export function StatsPage() {
     <div>
       <div className="page-heading"><div><p className="page-eyebrow">Teams & Spieler</p><h1 className="page-title">Statistik</h1><p className="page-subtitle">Torschützen, Mannschaften und die Zahlen hinter den Ergebnissen.</p></div></div>
       <label className="mb-5 block max-w-md text-xs font-semibold">Wettbewerb
-        <select className="field mt-2" value={league} onChange={(event) => setLeague(event.target.value === 'all' ? 'all' : Number(event.target.value))}>
-          <option value="all">Alle Ligen</option>{(meta?.leagues ?? []).map((ref) => <option key={ref.id} value={ref.id}>{ref.name}</option>)}
+        <select className="field mt-2" value={league} onChange={(event) => setLeague(event.target.value === 'M' || event.target.value === 'F' ? event.target.value : Number(event.target.value))}>
+          {splitByGender(meta?.leagues ?? [], leagueGender).map((section) => section.gender && (
+            <optgroup key={section.gender} label={GENDER_LABEL[section.gender]}>
+              <option value={section.gender}>Alle {GENDER_LABEL[section.gender]}-Ligen</option>
+              {section.items.map((ref) => <option key={ref.id} value={ref.id}>{ref.name}</option>)}
+            </optgroup>
+          ))}
         </select>
       </label>
-      <ReportsNotice leagueId={league === 'all' ? null : league} />
+      <ReportsNotice leagueId={league} />
       {isLoading ? (
         <Loading />
       ) : !data ? (
@@ -65,11 +76,11 @@ export function StatsPage() {
               value={playerView}
               onChange={setPlayerView}
             />
-            <PlayerTable players={players} view={playerView} leagues={league === 'all' ? meta?.leagues : undefined} limit={25} />
+            <PlayerTable players={players} view={playerView} leagues={aggregate ? meta?.leagues : undefined} limit={25} />
           </Section>
           <Section title="Mannschaften">
             <TeamViewChips value={teamView} onChange={setTeamView} />
-            <TeamTable teams={data.teams} view={teamView} leagues={league === 'all' ? meta?.leagues : undefined} />
+            <TeamTable teams={data.teams} view={teamView} leagues={aggregate ? meta?.leagues : undefined} />
           </Section>
         </>
       )}

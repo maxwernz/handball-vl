@@ -4,6 +4,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { SCORERS_PER_GAME } from '../shared/types.ts';
+import { leagueGender, type Gender } from '../shared/gender.ts';
 import type {
   Game,
   GameDetail,
@@ -64,8 +65,10 @@ function summary(data: SeasonData, finished: Game[], inLeague: (l: number) => bo
   return result;
 }
 
-function stats(data: SeasonData, leagueId: number | null): StatsResponse {
-  const inLeague = (l: number) => leagueId === null || l === leagueId;
+/** Stats of one league, all men's or all women's leagues, or (null) everything for search and comparison. */
+function stats(data: SeasonData, scope: number | Gender | null): StatsResponse {
+  const genders = new Map(data.leagues.map((l) => [l.id, leagueGender(l)]));
+  const inLeague = (l: number) => scope === null || (typeof scope === 'number' ? l === scope : genders.get(l) === scope);
   const finished = data.games.filter((g) => g.status === 'finished' && inLeague(g.leagueId));
   return {
     players: [...data.players.values()].filter((p) => inLeague(p.leagueId)).map(summarizePlayer),
@@ -146,6 +149,8 @@ async function exportSeason(season: number, current: boolean) {
   await emit(`${base}/meta`, meta);
   await emit(`${base}/games`, [...data.games].sort((a, b) => a.ts - b.ts));
   await emit(`${base}/stats`, stats(data, null));
+  // Rankings across leagues stay within men's or women's handball.
+  for (const gender of ['M', 'F'] as const) await emit(`${base}/stats-${gender}`, stats(data, gender));
   await emit(`${base}/scorers`, topScorers(data));
 
   for (const league of data.leagues) {

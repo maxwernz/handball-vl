@@ -1,12 +1,14 @@
 import { Link } from 'react-router';
 import type { LeagueRef, Meta } from '../../../shared/types.ts';
 import { leagueLabel } from '../lib/format.ts';
+import { GENDER_LABEL, leagueGender } from '../lib/gender.ts';
 import { toggleFavoriteLeague, useFavoriteLeagues, useRecentLeagues } from '../lib/favorites.ts';
 import { Icon } from './Icon.tsx';
 import { FavoriteStar } from './ui.tsx';
 
 export function leagueCategory(league: LeagueRef) {
-  return league.short.startsWith('F-') || league.name.startsWith('Frauen') ? 'Frauen' : league.short.startsWith('M-') || league.name.startsWith('Männer') ? 'Männer' : 'Weitere';
+  const gender = leagueGender(league);
+  return gender ? GENDER_LABEL[gender] : 'Weitere';
 }
 
 export function LeagueDirectory({ leagues, teams, stars = true }: { leagues: LeagueRef[]; teams: Meta['teams']; stars?: boolean }) {

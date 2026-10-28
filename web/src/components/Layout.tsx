@@ -1,7 +1,8 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useEffect } from 'react';
-import { useIndex, useLiveGames, useSeasonId } from '../api.ts';
+import { BASE, useIndex, useLiveGames, useSeasonId } from '../api.ts';
 import { useSeason } from '../lib/season.tsx';
+import { setGender, useGender, type GenderFilter } from '../lib/gender.ts';
 import { AppStatus } from './AppStatus.tsx';
 import { Icon, type IconName } from './Icon.tsx';
 import { ErrorBox, Loading } from './ui.tsx';
@@ -20,6 +21,17 @@ function SeasonSelect() {
       navigate('/');
     }} className="season-select">
       {index.seasons.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+    </select>
+  );
+}
+/** Men's or women's handball, or both (always shown separately). Applies to the whole app. */
+function GenderSelect() {
+  const gender = useGender();
+  return (
+    <select aria-label="Männer, Frauen oder beide getrennt anzeigen" value={gender} onChange={(e) => setGender(e.target.value as GenderFilter)} className="season-select gender-select">
+      <option value="all">Beide</option>
+      <option value="M">Männer</option>
+      <option value="F">Frauen</option>
     </select>
   );
 }
@@ -53,7 +65,7 @@ export function Layout() {
               {item.label}{item.to === '/live' && live > 0 && <span className="nav-live-count">{live}</span>}
             </NavLink>)}
           </nav>
-          <div className="header-season"><span className="season-caption">SAISON</span><SeasonSelect /></div>
+          <div className="header-season"><GenderSelect /><span className="season-caption">SAISON</span><SeasonSelect /></div>
         </div>
       </header>
       <main id="main-content" className="page-shell" tabIndex={-1}>
@@ -65,6 +77,7 @@ export function Layout() {
         <span className="footer-brand">HANDBALL BW</span>
         <span>Ergebnisse & Spielberichte: handball4all / BWHV · Logos: handball.net</span>
         {updated && <span>Datenstand {updated} Uhr · Live-Ergebnisse werden automatisch aktualisiert</span>}
+        <a href={`${BASE}analyse/`} className="underline">Statistik-Werkbank: Tabellen, Diagramme, SQL</a>
       </footer>
       <nav className="mobile-nav" aria-label="Mobile Hauptnavigation">
         {navigation.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `mobile-nav-item ${active(item.to, isActive) ? 'is-active' : ''}`}>

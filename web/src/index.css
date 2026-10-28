@@ -76,6 +76,10 @@ main:focus { outline: none; }
 .desktop-nav-item.is-active::after { transform: scaleX(1); }
 .nav-live-count { min-width: 18px; padding: 2px 4px; font-size: 10px; line-height: 1.3; text-align: center; background: #b82c38; border-radius: 4px; color: white; }
 .header-season { margin-left: auto; display: flex; align-items: center; gap: 9px; }
+.gender-select { max-width: 120px; }
+.gender-heading { display: flex; align-items: baseline; gap: 8px; margin: 22px 0 10px; font-size: 11px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; color: var(--color-ink-2); }
+.gender-heading:first-child { margin-top: 0; }
+.gender-heading span { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--color-ink-3); }
 .season-caption { font-size: 9px; letter-spacing: .12em; color: #97a7b7; }
 .season-select, .season-label { min-height: 36px; max-width: 130px; border: 1px solid #3c4855; border-radius: 6px; background: #1d2833; color: #edf1f6; padding: 6px 8px; font-size: 12px; font-weight: 600; }
 .page-shell { max-width: 1240px; margin: auto; padding: 36px 32px 0; min-height: 55dvh; }
@@ -202,6 +206,7 @@ main:focus { outline: none; }
   .brand { font-size: 14px; gap: 9px; }
   .brand-mark { width: 31px; height: 31px; }
   .season-select, .season-label { max-width: 110px; font-size: 11px; }
+  .gender-select { max-width: 96px; }
   .page-shell { padding: 25px 16px 0; }
   .page-heading { gap: 12px; margin-bottom: 22px; }
   .page-title { font-size: 29px; }
@@ -230,4 +235,8 @@ main:focus { outline: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+@media (max-width: 380px) {
+  /* Room for the men/women and season selects next to the logo. */
+  .brand > span:last-child { display: none; }
 }

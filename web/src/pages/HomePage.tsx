@@ -12,6 +12,7 @@ import { setFavorites, setOpenLeagues, shareLink, toggleFavorite, toggleFavorite
 import { formatDay, isoDay, leagueLabel, leagueOrder, relativeDay } from '../lib/format.ts';
 import { matcher } from '../lib/search.ts';
 import { useStoredState } from '../lib/storage.ts';
+import { GENDER_LABEL, genderLookup, leagueGender, splitByGender, useGender } from '../lib/gender.ts';
 
 function berlinToday() {
   const parts = new Intl.DateTimeFormat('en', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
@@ -55,6 +56,8 @@ function MatchCenter({ meta, mine, onEditFavorites }: { meta: Meta; mine: ((game
   const [storedScope, setScope] = useStoredState<Scope>('homeScope', ['mine', 'all'], 'mine');
   const scope: Scope = mine ? storedScope : 'all';
   const [limit, setLimit] = useState(40);
+  const gender = useGender();
+  const genderOf = genderLookup(meta.leagues);
   const today = berlinToday();
   const currentWeek = monday(today);
   const defaultWeek = useMemo(() => {
@@ -66,7 +69,8 @@ function MatchCenter({ meta, mine, onEditFavorites }: { meta: Meta; mine: ((game
   const week = selectedWeek ?? defaultWeek;
   const dates = Array.from({ length: 7 }, (_, index) => shiftDay(week, index));
   const weeklyGames = useMemo(() => (games ?? []).filter((game) => isoDay(game.date) >= week && isoDay(game.date) < shiftDay(week, 7)).sort((a, b) => a.ts - b.ts || a.leagueId - b.leagueId), [games, week]);
-  const filtered = weeklyGames.filter((game) => scope === 'all' || !mine || mine(game));
+  // "Alle Ligen" follows the men/women choice in the header; "Meine Spiele" shows every favorite.
+  const filtered = weeklyGames.filter((game) => (scope === 'all' ? gender === 'all' || genderOf(game.leagueId) === gender : !mine || mine(game)));
   const visible = filtered.filter((game) => selectedDay === 'all' || isoDay(game.date) === selectedDay);
   const changeWeek = (next: string) => { setSelectedWeek(next); setSelectedDay('all'); setLimit(40); };
   const tags = new Map(meta.leagues.map((ref) => [ref.id, leagueLabel(ref.short)]));
@@ -112,11 +116,14 @@ function MatchCenter({ meta, mine, onEditFavorites }: { meta: Meta; mine: ((game
     </div>
     {!mine && !isPending && <div className="favorite-hint"><Icon name="star" size={18} /><span className="min-w-0 flex-1">Wähle deine Teams oder Ligen, dann siehst du hier zuerst deren Spiele.</span><button className="text-action" onClick={onEditFavorites}>Auswählen<Icon name="arrow" size={14} /></button></div>}
     {isPending ? <Loading /> : error ? <ErrorBox error={error} /> : !visible.length ? <Empty><Icon name="calendar" size={28} className="mx-auto mb-3 text-(--color-ink-3)" /><p className="font-semibold text-(--color-ink)">{scope === 'mine' ? 'Deine Teams spielen hier nicht' : 'Keine Spiele in dieser Auswahl'}</p><p className="mt-2">Wähle einen anderen Tag oder eine andere Woche.</p>{scope === 'mine' ? <button className="text-action mt-3" onClick={() => setScope('all')}>Alle Ligen zeigen<Icon name="arrow" size={16} /></button> : selectedDay !== 'all' && <button className="text-action mt-3" onClick={() => setSelectedDay('all')}>Ganze Woche zeigen<Icon name="arrow" size={16} /></button>}</Empty> : scope === 'all' ? <>
-      <div className="league-groups">{leagueGroups.map(({ league, games: list }) => <LeagueGroup key={league.id} league={league} games={list} open={openShorts.includes(league.short)} onToggle={() => toggleLeague(league.short)} showDate={selectedDay === 'all'} />)}</div>
+      {splitByGender(leagueGroups, (group) => leagueGender(group.league), gender).map((section) => <div key={section.gender ?? 'other'}>
+        {gender === 'all' && <h2 className="gender-heading">{section.gender ? GENDER_LABEL[section.gender] : 'Weitere'}<span>{section.items.reduce((n, group) => n + group.games.length, 0)} Spiele</span></h2>}
+        <div className="league-groups">{section.items.map(({ league, games: list }) => <LeagueGroup key={league.id} league={league} games={list} open={openShorts.includes(league.short)} onToggle={() => toggleLeague(league.short)} showDate={selectedDay === 'all'} />)}</div>
+      </div>)}
     </> : <>
       {[...dayGroups].map(([day, list]) => <div key={day}><h2 className="day-heading">{relativeDay(day)}<span>{filtered.filter((game) => isoDay(game.date) === day).length} Spiele</span></h2><GameList games={list} showDate={false} leagueTag={tag} /></div>)}
       {visible.length > limit && <button className="button-secondary mt-4 w-full" onClick={() => setLimit((value) => value + 40)}>Weitere {Math.min(40, visible.length - limit)} Spiele anzeigen<Icon name="chevron-right" size={15} /></button>}
-      <MatchdayHighlights games={visible} />
+      {splitByGender(visible, (game) => genderOf(game.leagueId)).map((section, _, all) => <MatchdayHighlights key={section.gender ?? 'other'} games={section.items} title={all.length > 1 && section.gender ? `Höhepunkte ${GENDER_LABEL[section.gender]}` : undefined} />)}
     </>}
   </section>;
 }
@@ -135,7 +142,7 @@ function FavoritesSetup({ meta, onDone }: { meta: Meta; onDone: () => void }) {
     <div className="section-heading"><h2 id="favorites-heading">Deine Favoriten</h2><button className="icon-button" onClick={onDone} aria-label="Favoritenauswahl schließen"><Icon name="close" size={17} /></button></div>
     <p className="mb-4 text-xs leading-relaxed text-(--color-ink-2)">Teams und Ligen auswählen. Deine Auswahl wird auf diesem Gerät gespeichert.</p>
     <Chips options={[{ id: 'teams', label: `Teams (${favorites.length})` }, { id: 'leagues', label: `Ligen (${favoriteLeagues.length})` }]} value={kind} onChange={setKind} />
-    <div className="flex flex-wrap gap-2"><div className="search-field min-w-40 flex-1"><Icon name="search" size={17} /><input className="field" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={kind === 'teams' ? 'Team suchen' : 'Liga suchen'} aria-label={kind === 'teams' ? 'Favoritenteam suchen' : 'Favoritenliga suchen'} /></div>{kind === 'teams' && <select className="field min-w-40 flex-1" value={league} aria-label="Teams nach Liga filtern" onChange={(event) => setLeague(event.target.value)}><option value="all">Alle Ligen</option>{meta.leagues.map((ref) => <option key={ref.id} value={ref.id}>{ref.name}</option>)}</select>}</div>
+    <div className="flex flex-wrap gap-2"><div className="search-field min-w-40 flex-1"><Icon name="search" size={17} /><input className="field" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={kind === 'teams' ? 'Team suchen' : 'Liga suchen'} aria-label={kind === 'teams' ? 'Favoritenteam suchen' : 'Favoritenliga suchen'} /></div>{kind === 'teams' && <select className="field min-w-40 flex-1" value={league} aria-label="Teams nach Liga filtern" onChange={(event) => setLeague(event.target.value)}><option value="all">Alle Ligen</option>{splitByGender(meta.leagues, leagueGender).map((section) => <optgroup key={section.gender ?? 'other'} label={section.gender ? GENDER_LABEL[section.gender] : 'Weitere'}>{section.items.map((ref) => <option key={ref.id} value={ref.id}>{ref.name}</option>)}</optgroup>)}</select>}</div>
     <div className="favorite-results">{kind === 'teams' ? teams.slice(0, 40).map((team) => <button className="favorite-option" key={team.id} aria-pressed={selectedTeams.has(team.id)} onClick={() => toggleFavorite(team.name, meta.leagues.find((ref) => ref.id === team.leagueId)?.short ?? '')}><TeamLogo teamId={team.id} name={team.name} size={25} /><span className="min-w-0 flex-1"><span className="block font-medium">{team.name}</span><span className="mt-0.5 block text-[10px] text-(--color-ink-3)">{meta.leagues.find((ref) => ref.id === team.leagueId)?.name}</span></span><span className="favorite-check">{selectedTeams.has(team.id) && <Icon name="check" size={14} />}</span></button>) : leagues.map((ref) => <button className="favorite-option" key={ref.id} aria-pressed={favoriteLeagues.includes(ref.short)} onClick={() => toggleFavoriteLeague(ref.short)}><Icon name="leagues" size={20} /><span>{ref.name}</span><span className="favorite-check">{favoriteLeagues.includes(ref.short) && <Icon name="check" size={14} />}</span></button>)}
       {(kind === 'teams' ? teams.length : leagues.length) === 0 && <p className="py-6 text-center text-xs text-(--color-ink-2)">Keine Treffer für diese Auswahl.</p>}
     </div>

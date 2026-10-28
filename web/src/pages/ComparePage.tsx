@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { PlayerDetail } from '../../../shared/types.ts';
-import { usePlayer, useStats } from '../api.ts';
+import { useMeta, usePlayer, useStats } from '../api.ts';
+import { GENDER_LABEL, genderLookup, type Gender } from '../lib/gender.ts';
 import { CompareBar, PeriodBars } from '../components/charts.tsx';
 import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Empty, ErrorBox, Loading } from '../components/ui.tsx';
@@ -9,10 +10,10 @@ import { matcher } from '../lib/search.ts';
 
 const MAX_RESULTS = 8;
 
-/** Search field that picks a player; `exclude` is the one already chosen on the other side. */
-function PlayerPicker({ exclude, onPick }: { exclude: string | null; onPick: (key: string) => void }) {
+/** Search field that picks a player; `exclude` is the one already chosen on the other side, whose gender `gender` limits the choice. */
+function PlayerPicker({ exclude, gender, onPick }: { exclude: string | null; gender: Gender | null; onPick: (key: string) => void }) {
   const [query, setQuery] = useState('');
-  const { data: stats } = useStats(null);
+  const { data: stats } = useStats(gender);
   const matches = matcher(query);
   const players = matches ? (stats?.players ?? []).filter((p) => p.key !== exclude && matches(p.name)).sort((a, b) => b.goals - a.goals) : [];
   return (
@@ -21,7 +22,7 @@ function PlayerPicker({ exclude, onPick }: { exclude: string | null; onPick: (ke
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Spieler suchen"
+        placeholder={gender ? `Spieler suchen (${GENDER_LABEL[gender]})` : 'Spieler suchen'}
         aria-label="Spieler zum Vergleichen suchen"
         className="w-full rounded-lg border border-(--color-line) bg-(--color-surface) px-3 py-2 text-sm outline-none focus:border-(--color-brand)"
       />
@@ -64,9 +65,13 @@ export function ComparePage() {
   };
   const a = usePlayer(keys.a ?? '');
   const b = usePlayer(keys.b ?? '');
+  const { data: meta } = useMeta();
+  const genderOf = genderLookup(meta?.leagues);
+  // Only players of the same competitions are compared: the second pick follows the first one's gender.
+  const genderOfSlot = (q: typeof a) => (q.data ? genderOf(q.data.leagueId) : null);
   const slot = (id: 'a' | 'b', q: typeof a, side: 'home' | 'guest') =>
     !keys[id] ? (
-      <PlayerPicker exclude={keys[id === 'a' ? 'b' : 'a']} onPick={(key) => set(id, key)} />
+      <PlayerPicker exclude={keys[id === 'a' ? 'b' : 'a']} gender={genderOfSlot(id === 'a' ? b : a)} onPick={(key) => set(id, key)} />
     ) : q.data ? (
       <Head player={q.data} side={side} onChange={() => set(id, null)} />
     ) : q.error ? (

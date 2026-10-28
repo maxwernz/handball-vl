@@ -4,6 +4,7 @@ import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Empty, ErrorBox, Loading, Section } from '../components/ui.tsx';
 import { leagueLabel } from '../lib/format.ts';
 import { matcher } from '../lib/search.ts';
+import { genderLookup, useGender } from '../lib/gender.ts';
 
 const MAX_RESULTS = 30;
 
@@ -15,8 +16,12 @@ export function SearchPage() {
   const { data: stats, error: statsError, isPending } = useStats(null);
   const matches = matcher(query);
   const league = (id: number) => leagueLabel(meta?.leagues.find((l) => l.id === id)?.short ?? '');
-  const teams = matches ? (meta?.teams ?? []).filter((t) => matches(t.name)) : [];
-  const players = matches ? (stats?.players ?? []).filter((p) => matches(p.name)).sort((a, b) => b.goals - a.goals) : [];
+  // Everything stays findable; the men's or women's results chosen in the header come first.
+  const gender = useGender();
+  const genderOf = genderLookup(meta?.leagues);
+  const preferred = (leagueId: number) => Number(gender !== 'all' && genderOf(leagueId) !== gender);
+  const teams = matches ? (meta?.teams ?? []).filter((t) => matches(t.name)).sort((a, b) => preferred(a.leagueId) - preferred(b.leagueId)) : [];
+  const players = matches ? (stats?.players ?? []).filter((p) => matches(p.name)).sort((a, b) => preferred(a.leagueId) - preferred(b.leagueId) || b.goals - a.goals) : [];
   const row = 'flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-(--color-surface-2)';
 
   return (
@@ -57,7 +62,7 @@ export function SearchPage() {
                     <TeamLogo teamId={p.teamId} name={p.team} size={26} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{p.name}</span>
-                      <span className="block truncate text-xs text-(--color-ink-3)">{p.team}</span>
+                      <span className="block truncate text-xs text-(--color-ink-3)">{p.team} · {league(p.leagueId)}</span>
                     </span>
                     <span className="tabular shrink-0 text-xs text-(--color-ink-3)">
                       {p.goals} {p.goals === 1 ? 'Tor' : 'Tore'}
