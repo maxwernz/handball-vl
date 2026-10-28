@@ -70,6 +70,10 @@ td.n { text-align: right; font-variant-numeric: tabular-nums; }
 .idx { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; width: 1%; }
 tbody tr:hover { background: var(--head); }
 .more { margin-top: 6px; }
+.col-notes { margin: 10px 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px 16px; font-size: 12.5px; color: var(--ink-2); }
+.col-notes div { display: flex; gap: 6px; }
+.col-notes dt { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.col-notes dd { margin: 0; }
 
 .examples { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 textarea.sql { width: 100%; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--page); border: 1px solid var(--line-strong); border-radius: 6px; padding: 8px; margin-bottom: 6px; }

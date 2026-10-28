@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { GENDER_LABEL, leagueGender, splitByGender, useGender, type Gender } from '../lib/gender.ts';
-import { useMeta, useStats } from '../api.ts';
+import { BASE, useMeta, useStats } from '../api.ts';
 import { ReportsNotice } from '../components/ReportsNotice.tsx';
 import { LeagueSummaryView } from '../components/LeagueSummary.tsx';
 import { PLAYER_VIEWS, PlayerTable, TeamTable, TeamViewChips, type PlayerView, type TeamView } from '../components/StatTables.tsx';
@@ -36,6 +36,10 @@ export function StatsPage() {
   return (
     <div>
       <div className="page-heading"><div><p className="page-eyebrow">Teams & Spieler</p><h1 className="page-title">Statistik</h1><p className="page-subtitle">Torschützen, Mannschaften und die Zahlen hinter den Ergebnissen.</p></div></div>
+      <a href={`${BASE}analyse/`} className="mb-5 flex items-center justify-between gap-3 rounded-lg border border-(--color-line) bg-(--color-surface) px-4 py-3 text-sm hover:border-(--color-brand)">
+        <span><span className="block font-semibold">Detaillierte Analyse</span><span className="text-xs text-(--color-ink-2)">Teamwerte, Über-/Unterzahl, Spielverlauf, Diagramme und eigene SQL-Abfragen</span></span>
+        <span aria-hidden="true">→</span>
+      </a>
       <label className="mb-5 block max-w-md text-xs font-semibold">Wettbewerb
         <select className="field mt-2" value={league} onChange={(event) => setLeague(event.target.value === 'M' || event.target.value === 'F' ? event.target.value : Number(event.target.value))}>
           {splitByGender(meta?.leagues ?? [], leagueGender).map((section) => section.gender && (

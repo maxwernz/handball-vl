@@ -63,7 +63,7 @@ export function Teams({ f }: ViewProps) {
   const columns = Object.keys(data[0]).filter((k) => k !== 'id').map((key) => ({ key, title: TEAM_NOTES[key], format: PCT.has(key) ? (v: unknown) => pct(v as number) : undefined }));
   return (
     <>
-      <Section title="Teamwerte" note="Alle Werte pro Spiel, sofern nicht anders angegeben. Ereigniswerte (7m, Strafen, Über-/Unterzahl, Schlussphase) nur aus Spielen mit Spielbericht. Spaltenkopf klicken zum Sortieren, Spalten mit ? haben eine Erklärung.">
+      <Section title="Teamwerte" note="Alle Werte pro Spiel, sofern nicht anders angegeben. Ereigniswerte (7m, Strafen, Über-/Unterzahl, Schlussphase) nur aus Spielen mit Spielbericht. Spaltenkopf klicken zum Sortieren, Spalten mit ? sind unter der Tabelle erklärt.">
         <DataTable name="teams" rows={data} columns={columns} limit={200} maxHeight={600} />
       </Section>
       <ScatterBox title="Zusammenhang zweier Teamwerte" rows={data} label="Team" x="Diff/Sp" y="Pkt/Sp" highlight={f.team ? (r) => r.id === f.team : undefined}

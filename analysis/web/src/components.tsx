@@ -94,6 +94,11 @@ export function DataTable({ rows, columns, name, limit = 100, maxHeight }: {
         </table>
       </div>
       {sorted.length > limit && !all ? <button className="more" onClick={() => setAll(true)}>Alle {sorted.length} Zeilen zeigen</button> : null}
+      {cols.some((c) => c.title) ? (
+        <dl className="col-notes">
+          {cols.filter((c) => c.title).map((c) => <div key={c.key}><dt>{c.label ?? c.key}</dt><dd>{c.title}</dd></div>)}
+        </dl>
+      ) : null}
     </div>
   );
 }
