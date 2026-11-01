@@ -49,12 +49,14 @@ export function PlayerTable({
     render: (p) => <PlayerCell p={p} showTeam={showTeam} />,
   };
   const leagueCol: Column<PlayerStats>[] = leagues && leagues.length > 1 ? [{ id: 'league', label: 'Liga', align: 'left', hideBelow: 'md', value: league }] : [];
+  const no: Column<PlayerStats> = { id: 'no', label: 'Nr.', title: 'Trikotnummer im letzten verfügbaren Spielbericht', value: (p) => Number(p.no) || 0, render: (p) => p.no || '–' };
   const games: Column<PlayerStats> = { id: 'games', label: 'Sp', title: 'Spiele', value: (p) => p.games };
 
   const byView: Record<PlayerView, { columns: Column<PlayerStats>[]; sort: string; filter?: (p: PlayerStats) => boolean }> = {
     goals: {
       sort: 'goals',
       columns: [
+        no,
         name,
         ...leagueCol,
         games,
@@ -68,6 +70,7 @@ export function PlayerTable({
       sort: 'share',
       filter: (p) => p.goals > 0,
       columns: [
+        no,
         name,
         ...leagueCol,
         games,
@@ -87,6 +90,7 @@ export function PlayerTable({
       sort: 'made',
       filter: (p) => p.sevenAttempts > 0,
       columns: [
+        no,
         name,
         ...leagueCol,
         { id: 'made', label: 'Tore', title: '7-Meter-Tore', value: (p) => p.sevenGoals },
@@ -103,6 +107,7 @@ export function PlayerTable({
       sort: 'two',
       filter: (p) => p.twoMinutes + p.warnings + p.disqualifications > 0,
       columns: [
+        no,
         name,
         ...leagueCol,
         games,

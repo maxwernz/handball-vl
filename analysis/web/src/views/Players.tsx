@@ -11,9 +11,10 @@ export function Players({ f }: ViewProps) {
   const team = f.team ? `AND p.team_id = ${f.team}` : '';
 
   const players = useMemo(() => rows(`WITH g AS (${scope}),
-    p AS (SELECT * FROM players p WHERE p.is_official = 0 AND p.game_id IN (SELECT id FROM g) ${team}),
+    p AS (SELECT p.*, ROW_NUMBER() OVER (PARTITION BY p.player_key ORDER BY g.kickoff DESC, g.id DESC) AS latest
+      FROM players p JOIN g ON g.id = p.game_id WHERE p.is_official = 0 ${team}),
     tg AS (SELECT team_id, SUM(goals) AS goals FROM players WHERE is_official = 0 AND game_id IN (SELECT id FROM g) GROUP BY team_id)
-    SELECT p.player_key AS key, MAX(p.name) AS Spieler, t.name AS Team, l.short AS Liga, COUNT(*) AS Sp, SUM(p.goals) AS Tore, AVG(p.goals) AS "T/Sp",
+    SELECT p.player_key AS key, MAX(CASE WHEN p.latest = 1 THEN p.no END) AS "Nr.", MAX(p.name) AS Spieler, t.name AS Team, l.short AS Liga, COUNT(*) AS Sp, SUM(p.goals) AS Tore, AVG(p.goals) AS "T/Sp",
       sqrt((AVG(p.goals * p.goals) - AVG(p.goals) * AVG(p.goals)) * COUNT(*) / NULLIF(COUNT(*) - 1.0, 0)) AS "SD T", MAX(p.goals) AS Max,
       SUM(p.field_goals) AS Feldtore, AVG(p.field_goals) AS "Feld/Sp", SUM(p.seven_goals) AS "7m T", SUM(p.seven_attempts) AS "7m V",
       1.0 * SUM(p.seven_goals) / NULLIF(SUM(p.seven_attempts), 0) AS "7m %", 1.0 * SUM(p.goals) / NULLIF(tg.goals, 0) AS "Anteil Teamtore",
@@ -34,7 +35,7 @@ export function Players({ f }: ViewProps) {
   const pctKeys = new Set(['7m %', 'Anteil Teamtore']);
   return (
     <>
-      <Section title="Spielerwerte" note="Sp = Spiele im Spielbericht (Kader, nicht zwingend eingesetzt). Nur Spiele mit Spielbericht. Feldtore = Tore ohne 7m."
+      <Section title="Spielerwerte" note="Nr. = Trikotnummer im letzten verfügbaren Spielbericht der Auswahl. Sp = Spiele im Spielbericht (Kader, nicht zwingend eingesetzt). Nur Spiele mit Spielbericht. Feldtore = Tore ohne 7m."
         actions={<Select label="mind. Spiele" value={minGames} options={[1, 3, 5, 8, 10].map((n) => ({ value: n, label: String(n) }))} onChange={setMinGames} />}>
         <DataTable name="spieler" rows={players} limit={200} maxHeight={600}
           columns={Object.keys(players[0] ?? {}).filter((k) => k !== 'key').map((key) => ({ key, format: pctKeys.has(key) ? (v: unknown) => pct(v as number) : undefined }))} />

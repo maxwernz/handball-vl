@@ -48,7 +48,7 @@ export function SortableTable<T>({
         <table className="tabular w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-(--color-line) text-xs text-(--color-ink-3)">
-              {rank && <th className="w-8 py-2 pl-3 text-left font-medium">#</th>}
+              {rank && <th title="Position in der aktuellen Sortierung" className="w-12 py-2 pl-3 text-left font-medium">Rang</th>}
               {columns.map((c) => (
                 <th
                   key={c.id}

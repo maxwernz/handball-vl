@@ -71,7 +71,7 @@ export function DataTable({ rows, columns, name, limit = 100, maxHeight }: {
         <table>
           <thead>
             <tr>
-              <th className="idx">#</th>
+              <th className="idx" title="Zeilennummer in der aktuellen Sortierung">Zeile</th>
               {cols.map((c) => (
                 <th key={c.key} title={c.title} onClick={() => setSort((s) => (s?.key === c.key ? { key: c.key, dir: s.dir === 1 ? -1 : 1 } : { key: c.key, dir: -1 }))}
                   className={sort?.key === c.key ? 'sorted' : undefined}>
