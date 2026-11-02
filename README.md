@@ -18,6 +18,7 @@ damit direkte Links und Neuladen auf GitHub Pages regulär mit HTTP 200 funktion
 pipeline/   Node-Skripte: Daten von h4a holen, PDF-Spielberichte parsen, Statistiken & Logos, JSON exportieren
 shared/     Typen und h4a-Hilfen, die Pipeline und Web-App gemeinsam nutzen
 web/        React-App (Vite, Tailwind, PWA)
+team/       Interne, passwortgeschützte Mannschaftsstatistik unter /intern/ (siehe team/README.md)
 ```
 
 | Was | Woher |

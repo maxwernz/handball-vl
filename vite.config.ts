@@ -41,9 +41,9 @@ export default defineConfig({
       workbox: {
         // Only cache the app shell up front. Thousands of reports are cached on demand.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        globIgnores: ['api/**', 'analyse/**'],
+        globIgnores: ['api/**', 'analyse/**', 'intern/**'],
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/\/api\//, /\/analyse(\/|$)/],
+        navigateFallbackDenylist: [/\/api\//, /\/analyse(\/|$)/, /\/intern(\/|$)/],
         runtimeCaching: [
           {
             // Data stays readable offline, but the network always wins when available.

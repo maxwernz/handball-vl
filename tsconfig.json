@@ -9,8 +9,19 @@
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "resolveJsonModule": true
   },
-  "include": ["pipeline", "shared", "analysis"],
-  "exclude": ["analysis/web"]
+  "include": [
+    "pipeline",
+    "shared",
+    "analysis",
+    "team"
+  ],
+  "exclude": [
+    "analysis/web",
+    "team/web"
+  ]
 }

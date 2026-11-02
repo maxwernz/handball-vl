@@ -1,0 +1,60 @@
+name: Interne Statistik
+
+# Started by the upload page on /intern/ (workflow_dispatch with an encrypted payload)
+# or after parser changes. Writes only to the branch "team-data"; every file there is
+# encrypted. The repository is public: never print player names or file contents.
+
+on:
+  workflow_dispatch:
+    inputs:
+      payload:
+        description: Verschlüsselte Änderung von der Upload-Seite (leer = nur neu bauen)
+        required: false
+        type: string
+        default: ''
+  push:
+    branches: [main]
+    paths: ['team/lib/**', 'team/store.ts', 'team/ingest.ts', 'team/config.json']
+
+permissions:
+  contents: write
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # No npm install needed: the script only uses Node built-ins.
+      - name: Verarbeiten und speichern
+        env:
+          PAYLOAD: ${{ inputs.payload }}
+          TEAM_PASSWORD: ${{ secrets.TEAM_PASSWORD }}
+          TEAM_UPLOAD_PASSWORD: ${{ secrets.TEAM_UPLOAD_PASSWORD }}
+          TEAM_STORAGE_KEY: ${{ secrets.TEAM_STORAGE_KEY }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Uploads can overlap; rebuild on top of the latest state until the push succeeds.
+          for attempt in 1 2 3 4 5; do
+            rm -rf .team-data; git worktree prune
+            if git fetch -q origin team-data 2>/dev/null; then
+              git worktree add -q --detach .team-data FETCH_HEAD
+            else
+              git worktree add -q --orphan -b team-data .team-data
+            fi
+            node --disable-warning=ExperimentalWarning team/ingest.ts .team-data
+            cd .team-data
+            git add -A
+            if git diff --cached --quiet; then echo "Keine Änderungen"; exit 0; fi
+            git commit -q -m "Statistik $(date -u +%Y-%m-%dT%H:%MZ)"
+            if git push -q origin HEAD:refs/heads/team-data; then exit 0; fi
+            cd ..
+            echo "Push abgelehnt, neuer Versuch ($attempt)"; sleep $((attempt * 3))
+          done
+          exit 1

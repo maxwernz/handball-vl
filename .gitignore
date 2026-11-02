@@ -9,3 +9,7 @@ playwright-report
 analysis/.data
 analysis/handball.db
 analysis/handball.db.tmp
+
+# Interne Statistik: lokale Passwörter und Datenstand
+.team-secrets.json
+.team-data

@@ -6,8 +6,8 @@
   "scripts": {
     "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.ts\"",
     "dev": "vite",
-    "build": "vite build && vite build -c vite.analyse.config.ts && node scripts/pages.mjs",
-    "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json && tsc -p analysis/web/tsconfig.json",
+    "build": "vite build && vite build -c vite.analyse.config.ts && vite build -c vite.intern.config.ts && node scripts/pages.mjs",
+    "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json && tsc -p analysis/web/tsconfig.json && tsc -p team/web/tsconfig.json",
     "icons": "node scripts/icons.mjs",
     "data": "node pipeline/run.ts",
     "data:export": "node pipeline/run.ts --export",
@@ -16,7 +16,9 @@
     "analyse:update": "node --disable-warning=ExperimentalWarning analysis/update.ts",
     "analyse:server": "node --disable-warning=ExperimentalWarning analysis/server.ts",
     "analyse:web": "vite -c vite.analyse.config.ts",
-    "analyse:publish": "node --disable-warning=ExperimentalWarning analysis/publish.ts"
+    "analyse:publish": "node --disable-warning=ExperimentalWarning analysis/publish.ts",
+    "intern:dev": "vite -c vite.intern.config.ts",
+    "intern": "node --disable-warning=ExperimentalWarning team/cli.ts"
   },
   "keywords": [],
   "author": "",

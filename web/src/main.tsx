@@ -19,6 +19,12 @@ import { LeaguesPage } from './pages/LeaguesPage.tsx';
 import { RouteError } from './components/RouteError.tsx';
 import { DataRequestError } from './lib/requests.ts';
 
+// A service worker from before /intern/ existed answers that page with this app's shell.
+// Drop it and load the real page from the server; the next app visit registers it again.
+if (/\/intern(\/|$)/.test(location.pathname.slice(import.meta.env.BASE_URL.length - 1)) && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((list) => Promise.all(list.map((r) => r.unregister()))).then(() => location.reload());
+}
+
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 15_000, retry: (attempt, error) => attempt < 1 && !(error instanceof DataRequestError && [404, 429].includes(error.status)), refetchOnWindowFocus: true } },
 });
