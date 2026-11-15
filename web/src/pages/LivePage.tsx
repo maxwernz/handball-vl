@@ -61,7 +61,7 @@ function FeedRow({ game, event: e, fresh }: { game: Game; event: MatchEvent; fre
         <time className="tabular w-10 shrink-0 text-xs text-(--color-ink-3)" aria-label={`${e.clock} Spielzeit`}>{e.clock}</time>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium">
-            {e.type === 'disqualification' ? 'Rote Karte' : e.type === 'sevenGoal' ? '7m-Tor' : 'Tor'} {e.player}
+            {e.type === 'disqualification' ? (e.disqualificationReport ? 'Blaue Karte' : 'Rote Karte') : e.type === 'sevenGoal' ? '7m-Tor' : 'Tor'} {e.player}
           </span>
           <span className="block truncate text-xs text-(--color-ink-3)">
             {game.home} – {game.guest}

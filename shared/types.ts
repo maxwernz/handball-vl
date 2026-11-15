@@ -86,6 +86,8 @@ export interface PlayerLine {
   warning: string | null;
   twoMinutes: string[];
   disqualification: string | null;
+  /** Clock/mark in the report column: disqualification with written report (blue). */
+  disqualificationReport?: string | null;
   official: boolean;
   /** Player published without a name ("N.N."); shown as "Spieler <no>". */
   anonymous?: boolean;
@@ -118,9 +120,11 @@ export interface MatchEvent {
   homeScore: number;
   guestScore: number;
   text: string;
+  disqualificationReport?: boolean;
 }
 
 export interface Report {
+  parserVersion?: number;
   gameId: number;
   reportId: number;
   fetchedAt: string;
@@ -149,6 +153,7 @@ export interface PlayerGame {
   twoMinutes: number;
   warning: boolean;
   disqualification: boolean;
+  disqualificationReport?: boolean;
 }
 
 export interface PlayerStats {
@@ -165,6 +170,7 @@ export interface PlayerStats {
   twoMinutes: number;
   warnings: number;
   disqualifications: number;
+  disqualificationsWithReport?: number;
   /** Goals of the player's team in the games the player took part in (for the share of team goals). */
   teamGoals: number;
   bestGame: { gameId: number; goals: number; opponent: string } | null;
@@ -207,6 +213,7 @@ export interface TeamStats {
   twoMinutes: number;
   warnings: number;
   disqualifications: number;
+  disqualificationsWithReport?: number;
   timeouts: number;
   avgSpectators: number | null;
   goalsForByPeriod: number[];

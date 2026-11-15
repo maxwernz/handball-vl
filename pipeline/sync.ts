@@ -14,7 +14,7 @@ import type { Game, League, LeagueRef, Report, Season, Summary, Team } from '../
 import { config } from './config.ts';
 import { fetchLeague, fetchOrg, fetchReportPdf, fetchRobotext } from './h4a.ts';
 import { RateLimitedError } from './http.ts';
-import { checkReport, parseReport } from './report.ts';
+import { checkReport, parseReport, REPORT_PARSER_VERSION } from './report.ts';
 import { exists, read, write } from './store.ts';
 import { parseKickoff, weekStart } from './time.ts';
 import { resolveTeamNames } from './teams.ts';
@@ -170,7 +170,7 @@ async function syncGameDetails(game: Game, budget: { remaining: number }, kind: 
   if (kind === 'report' && game.reportId) {
     const existing = await read<Report>(keys.report(game.id));
     const recheck = existing && Date.parse(existing.fetchedAt) < game.ts + REPORT_RECHECK_MS && Date.now() > game.ts + REPORT_RECHECK_MS;
-    if (!existing || recheck || checkReport(existing, game).length) {
+    if (!existing || existing.parserVersion !== REPORT_PARSER_VERSION || recheck || checkReport(existing, game).length) {
       const attempt = await read<{ at: string }>(keys.reportAttempt(game.id));
       const recentMiss = attempt && Date.now() - Date.parse(attempt.at) < 6 * 3600_000;
       if (recentMiss || budget.remaining <= 0) complete = false;

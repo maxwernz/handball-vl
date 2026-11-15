@@ -138,7 +138,7 @@ function describe(e: MatchEvent) {
     case 'warning':
       return e.player ? `Gelbe Karte – ${e.player}` : 'Gelbe Karte';
     case 'disqualification':
-      return e.player ? `Rote Karte – ${e.player}` : 'Rote Karte';
+      return `${e.disqualificationReport ? 'Blaue Karte (Disqualifikation mit Bericht)' : 'Rote Karte'}${e.player ? ` – ${e.player}` : ''}`;
     case 'timeout':
       return 'Team-Auszeit';
     default:
@@ -163,7 +163,7 @@ function Ticker({ events: all, home, guest, live }: { events: MatchEvent[]; home
       </div>
       <ol className="card divide-y divide-(--color-line) overflow-hidden">
         {events.map(({ e, i }) => {
-          const look = EVENT_LOOK[e.type];
+          const look = e.disqualificationReport ? { icon: '▮', className: 'text-blue-600 dark:text-blue-400', label: 'Disqualifikation mit Bericht' } : EVENT_LOOK[e.type];
           const isGoal = e.type === 'goal' || e.type === 'sevenGoal';
           const showHalf = !newestFirst && !halftimeShown && e.t > 1800;
           if (showHalf) halftimeShown = true;
@@ -203,11 +203,12 @@ function Lineup({ sheet, teamId, side }: { sheet: TeamSheet; teamId: number | nu
   const penalties = (p: PlayerLine) => (
     <span className="inline-flex gap-1">
       {p.warning && <span title={`Verwarnung ${p.warning}`} className="inline-block h-3.5 w-2.5 rounded-sm bg-(--color-draw)" />}
-      {p.twoMinutes.map((t) => (
-        <span key={t} title={`2 Minuten (${t})`} className="rounded bg-(--color-surface-2) px-1 text-[10px] font-bold">
+      {p.twoMinutes.map((t, i) => (
+        <span key={`${t}-${i}`} title={`2 Minuten (${t})`} className="rounded bg-(--color-surface-2) px-1 text-[10px] font-bold">
           2'
         </span>
       ))}
+      {p.disqualificationReport && <span title={`Disqualifikation mit Bericht ${p.disqualificationReport}`} className="inline-block h-3.5 w-2.5 rounded-sm bg-blue-600 dark:bg-blue-400" />}
       {p.disqualification && <span title={`Disqualifikation ${p.disqualification}`} className="inline-block h-3.5 w-2.5 rounded-sm bg-(--color-loss)" />}
     </span>
   );

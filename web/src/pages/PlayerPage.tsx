@@ -63,7 +63,7 @@ export function PlayerPage() {
           }
         />
         <StatTile label="Torserie" value={p.longestStreak} hint="Spiele in Folge mit Tor" />
-        <StatTile label="Strafen" value={p.twoMinutes} hint={`Zeitstrafen · ${p.warnings} Gelb · ${p.disqualifications} Rot`} />
+        <StatTile label="Strafen" value={p.twoMinutes} hint={`Zeitstrafen · ${p.warnings} Gelb · ${p.disqualifications} Rot · ${p.disqualificationsWithReport ?? 0} davon mit Bericht (Blau)`} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -113,6 +113,7 @@ export function PlayerPage() {
                     <td className="py-2 pr-3 pl-2 text-right whitespace-nowrap">
                       {g.warning && <span className="mr-1 inline-block h-3.5 w-2.5 rounded-sm bg-(--color-draw) align-middle" title="Verwarnung" />}
                       {g.twoMinutes > 0 && <span className="text-xs font-bold">{g.twoMinutes}× 2'</span>}
+                      {g.disqualificationReport && <span className="ml-1 inline-block h-3.5 w-2.5 rounded-sm bg-blue-600 dark:bg-blue-400 align-middle" title="Disqualifikation mit Bericht (Blaue Karte)" />}
                       {g.disqualification && <span className="ml-1 inline-block h-3.5 w-2.5 rounded-sm bg-(--color-loss) align-middle" title="Disqualifikation" />}
                     </td>
                   </tr>

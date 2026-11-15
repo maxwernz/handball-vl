@@ -148,7 +148,10 @@ export function parseTicker(messages: RawMessage[], teams?: RawTeams): LiveGame 
       if (type === 'sevenGoal' || type === 'sevenMiss') line.sevenAttempts++;
       if (type === 'warning') line.warning = matchClock(t);
       if (type === 'twoMinutes') line.twoMinutes.push(matchClock(t));
-      if (type === 'disqualification') line.disqualification = matchClock(t);
+      if (type === 'disqualification') {
+        line.disqualification = matchClock(t);
+        if (/mit Bericht/i.test(m.message)) line.disqualificationReport = matchClock(t);
+      }
     }
     events.push({
       clock: matchClock(t),
@@ -160,6 +163,7 @@ export function parseTicker(messages: RawMessage[], teams?: RawTeams): LiveGame 
       homeScore: homeGoals,
       guestScore: guestGoals,
       text: m.message,
+      ...(/Disqualifikation mit Bericht/i.test(m.message) ? { disqualificationReport: true } : {}),
     });
   }
   return {

@@ -123,6 +123,7 @@ function StatsTab({ data }: { data: TeamDetail }) {
         {row('7-Meter', `${s.sevenGoals}/${s.sevenAttempts} (${percent(s.sevenGoals, s.sevenAttempts)})`)}
         {row('Zeitstrafen', `${s.twoMinutes} (Ø ${perGame(s.twoMinutes, s.reports)})`)}
         {row('Verwarnungen / Disqualifikationen', `${s.warnings} / ${s.disqualifications}`)}
+        {row('Davon mit Bericht (Blau)', s.disqualificationsWithReport ?? 0)}
         {row('Genommene Auszeiten', s.timeouts)}
         {row('Zuschauer pro Heimspiel', s.avgSpectators ?? '–')}
       </div>

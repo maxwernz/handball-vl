@@ -10,8 +10,8 @@ function PlayerCell({ p, showTeam }: { p: PlayerStats; showTeam: boolean }) {
     <Link to={`/spieler/${p.key}`} className="flex min-w-0 items-center gap-2 hover:underline">
       <TeamLogo teamId={p.teamId} name={p.team} size={22} />
       <span className="min-w-0">
-        <span className="block truncate font-medium">{p.name}</span>
-        {showTeam && <span className="block truncate text-xs font-normal text-(--color-ink-3)">{p.team}</span>}
+        <span className="block whitespace-normal [overflow-wrap:anywhere] font-medium">{p.name}</span>
+        {showTeam && <span className="block whitespace-normal [overflow-wrap:anywhere] text-xs font-normal text-(--color-ink-3)">{p.team}</span>}
       </span>
     </Link>
   );
@@ -113,7 +113,8 @@ export function PlayerTable({
         games,
         { id: 'two', label: '2 Min', title: 'Zeitstrafen', value: (p) => p.twoMinutes },
         { id: 'warn', label: 'Gelb', title: 'Verwarnungen', value: (p) => p.warnings },
-        { id: 'disq', label: 'Rot', title: 'Disqualifikationen', value: (p) => p.disqualifications },
+        { id: 'disq', label: 'Rot', title: 'Alle Disqualifikationen, einschließlich der mit Bericht', value: (p) => p.disqualifications },
+        { id: 'blue', label: 'Blau', title: 'Davon Disqualifikationen mit Bericht', value: (p) => p.disqualificationsWithReport ?? 0 },
       ],
     },
   };
@@ -185,6 +186,7 @@ export function TeamTable({ teams, view, leagues }: { teams: TeamStats[]; view: 
         { id: 'twoavg', label: 'Ø', title: 'Zeitstrafen pro Spiel', value: (t) => avg(t.twoMinutes, t.reports), render: (t) => perGame(t.twoMinutes, t.reports) },
         { id: 'warn', label: 'Gelb', value: (t) => t.warnings },
         { id: 'disq', label: 'Rot', value: (t) => t.disqualifications },
+        { id: 'blue', label: 'Blau', title: 'Davon Disqualifikationen mit Bericht', value: (t) => t.disqualificationsWithReport ?? 0 },
         { id: 'to', label: 'Auszeiten', hideBelow: 'sm', value: (t) => t.timeouts },
       ],
     },

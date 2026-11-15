@@ -74,7 +74,7 @@ export function SortableTable<T>({
                 {columns.map((c) => (
                   <td
                     key={c.id}
-                    className={`px-2 py-2 ${c.align === 'left' ? 'text-left' : 'text-right'} ${c.grow ? 'w-full max-w-0' : 'whitespace-nowrap'} ${c.hideBelow ? HIDE[c.hideBelow] : ''} ${sort.id === c.id ? 'font-semibold' : ''} last:pr-3`}
+                    className={`px-2 py-2 ${c.align === 'left' ? 'text-left' : 'text-right'} ${c.grow ? 'w-full min-w-40 max-w-0' : 'whitespace-nowrap'} ${c.hideBelow ? HIDE[c.hideBelow] : ''} ${sort.id === c.id ? 'font-semibold' : ''} last:pr-3`}
                   >
                     {c.render ? c.render(row) : c.value(row)}
                   </td>

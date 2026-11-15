@@ -115,3 +115,11 @@ test('ticker: an awarded official result can correct the final score downwards',
   const official = { status: 'finished', homeGoals: 23, guestGoals: 30, liveFlag: false, homePoints: 0, guestPoints: 2 } as Game;
   assert.equal(applyTickerResult(official, parseTicker(messages, teams)), official);
 });
+
+test('blue card remains one disqualification and is marked as with report', () => {
+  const ticker = parseTicker([{ game_time: '1200', home_score: '0', guest_score: '0', message: 'Disqualifikation mit Bericht für die Nummer 7 der Heimmannschaft' }]);
+  assert.equal(ticker.home.players[0].disqualification, '20:00');
+  assert.equal(ticker.home.players[0].disqualificationReport, '20:00');
+  assert.equal(ticker.events[0].type, 'disqualification');
+  assert.equal(ticker.events[0].disqualificationReport, true);
+});

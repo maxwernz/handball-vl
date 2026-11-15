@@ -57,6 +57,7 @@ function emptyTeam(teamId: number, team: string, leagueId: number): TeamStats {
     twoMinutes: 0,
     warnings: 0,
     disqualifications: 0,
+    disqualificationsWithReport: 0,
     timeouts: 0,
     avgSpectators: null,
     goalsForByPeriod: Array(PERIODS).fill(0),
@@ -161,6 +162,7 @@ function addReport(stats: TeamStats, report: Report, side: 'home' | 'guest', spe
     stats.twoMinutes += line.twoMinutes.length;
     if (line.warning) stats.warnings++;
     if (line.disqualification) stats.disqualifications++;
+    if (line.disqualificationReport) stats.disqualificationsWithReport = (stats.disqualificationsWithReport ?? 0) + 1;
   }
   for (const event of report.events) {
     if (event.type === 'timeout' && event.side === side) stats.timeouts++;
@@ -201,6 +203,7 @@ function addPlayers(
         twoMinutes: 0,
         warnings: 0,
         disqualifications: 0,
+        disqualificationsWithReport: 0,
         teamGoals: 0,
         bestGame: null,
         longestStreak: 0,
@@ -217,6 +220,7 @@ function addPlayers(
     player.teamGoals += (home ? game.homeGoals : game.guestGoals) ?? 0;
     if (line.warning) player.warnings++;
     if (line.disqualification) player.disqualifications++;
+    if (line.disqualificationReport) player.disqualificationsWithReport = (player.disqualificationsWithReport ?? 0) + 1;
     if (line.goals > 0 && (!player.bestGame || line.goals > player.bestGame.goals)) {
       player.bestGame = { gameId: game.id, goals: line.goals, opponent: home ? game.guest : game.home };
     }
@@ -238,6 +242,7 @@ function addPlayers(
       twoMinutes: line.twoMinutes.length,
       warning: !!line.warning,
       disqualification: !!line.disqualification,
+      disqualificationReport: !!line.disqualificationReport,
     };
     player.log.push(entry);
     players.set(key, player);

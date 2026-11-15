@@ -5,6 +5,8 @@
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type { EventType, MatchEvent, PlayerLine, Report, TeamSheet } from '../shared/types.ts';
 
+export const REPORT_PARSER_VERSION = 2;
+
 interface Cell {
   x: number;
   text: string;
@@ -28,7 +30,12 @@ async function extractRows(data: Uint8Array): Promise<Row[]> {
       const y = Math.round(item.transform[5]);
       const key = [...byY.keys()].find((k) => Math.abs(k - y) <= 1) ?? y;
       const cells = byY.get(key) ?? [];
-      cells.push({ x: Math.round(item.transform[4]), text: item.str.trim() });
+      // PDF.js may merge adjacent clock columns into a single text item.
+      // Restore their positions before assigning them to penalty/card columns.
+      const clocks = [...item.str.matchAll(/\d{1,3}:\d{2}/g)];
+      if (clocks.length > 1 && /^\s*\d{1,3}:\d{2}(?:\s+\d{1,3}:\d{2})+\s*$/.test(item.str)) {
+        for (const clock of clocks) cells.push({ x: Math.round(item.transform[4] + item.width * clock.index / item.str.length), text: clock[0] });
+      } else cells.push({ x: Math.round(item.transform[4]), text: item.str.trim() });
       byY.set(key, cells);
     }
     for (const [y, cells] of [...byY].sort((a, b) => b[0] - a[0])) {
@@ -99,8 +106,12 @@ function parseLine(row: Row, columns: { x: number; column: Column }[]): PlayerLi
       case 'disqualification':
         line.disqualification = cell.text;
         break;
+      case 'report':
+        line.disqualificationReport = cell.text;
+        break;
     }
   }
+  line.disqualification ??= line.disqualificationReport ?? null;
   return line;
 }
 
@@ -113,7 +124,7 @@ function parseAction(action: string): { type: EventType; player: string | null; 
     [/^7m, KEIN Tor durch (.+)$/, 'sevenMiss'],
     [/^2-min Strafe für (.+)$/, 'twoMinutes'],
     [/^Verwarnung für (.+)$/, 'warning'],
-    [/^Disqualifikation für (.+)$/, 'disqualification'],
+    [/^Disqualifikation(?: mit Bericht)? für (.+)$/, 'disqualification'],
   ];
   for (const [pattern, type] of patterns) {
     const match = action.match(pattern);
@@ -149,6 +160,7 @@ export async function parseReport(
   const report: Report = {
     gameId,
     reportId,
+    parserVersion: REPORT_PARSER_VERSION,
     fetchedAt: new Date().toISOString(),
     spectators: null,
     referees: [],
@@ -199,7 +211,7 @@ export async function parseReport(
         if (!line.name) continue;
         if (line.name === 'N.N. N.N.') {
           // Players who opted out of publication still count for the team.
-          if (line.official || (!line.goals && !line.twoMinutes.length && !line.warning)) continue;
+          if (line.official || (!line.goals && !line.twoMinutes.length && !line.warning && !line.disqualification && !line.disqualificationReport)) continue;
           line.name = `Spieler ${line.no}`;
           line.anonymous = true;
         }
@@ -232,7 +244,17 @@ export async function parseReport(
       homeScore,
       guestScore,
       text: action,
+      ...(/Disqualifikation mit Bericht/.test(action) ? { disqualificationReport: true } : {}),
     });
+  }
+  // A report flag can be present only in the sheet, only in the timeline, or both.
+  for (const e of report.events) {
+    if (e.type !== 'disqualification' || !e.side) continue;
+    const p = [...report[e.side].players, ...report[e.side].officials].find((p) => p.no === e.no);
+    if (!p) continue;
+    p.disqualification ??= e.clock;
+    if (e.disqualificationReport) p.disqualificationReport ??= e.clock;
+    if (p.disqualificationReport) e.disqualificationReport = true;
   }
   return report;
 }
