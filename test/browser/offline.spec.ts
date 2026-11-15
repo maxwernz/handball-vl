@@ -21,3 +21,22 @@ test('installed app shell and visited results remain readable offline', async ({
   await context.setOffline(false);
   await expect(page.getByText('Du bist offline.', { exact: true })).toHaveCount(0);
 });
+
+test('an open installed app checks for newer versions regularly', async ({ page }) => {
+  await page.clock.install({ time: Date.now() });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
+    const original = ServiceWorkerRegistration.prototype.update;
+    (window as any).pwaUpdateChecks = 0;
+    ServiceWorkerRegistration.prototype.update = function () {
+      (window as any).pwaUpdateChecks++;
+      return original.call(this);
+    };
+  });
+  await page.route('https://spo.handball4all.de/**', (route) => route.fulfill({ status: 503 }));
+  await page.goto('./');
+  await page.evaluate(async () => { await navigator.serviceWorker.ready; });
+  const initial = await page.evaluate(() => (window as any).pwaUpdateChecks);
+  await page.clock.fastForward(6 * 60_000);
+  await expect.poll(() => page.evaluate(() => (window as any).pwaUpdateChecks)).toBeGreaterThan(initial);
+});

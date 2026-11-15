@@ -2,7 +2,7 @@
 // events can be read with the token h4a publishes in the league data. This is
 // the same service the "Liveticker" link on bwhv.org leads to.
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { keepPreviousData, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { H4A_BASE } from '../../../shared/h4a.ts';
 import type { EventType, Game, MatchEvent, PlayerLine, Report, TeamSheet } from '../../../shared/types.ts';
@@ -261,10 +261,12 @@ const CONFERENCE_MIN_MS = 30_000;
 export function useConference(games: Game[]) {
   const client = useQueryClient();
   const ticked = games.filter((g) => g.tickerToken);
+  const roundStarted = useRef(0);
   const queryKey = ['conference', ticked.map((g) => g.tickerToken).join()];
   return useQuery({
     queryKey,
     queryFn: async ({ signal }) => {
+      roundStarted.current = Date.now();
       // Keep the last known entries during a temporary outage instead of
       // emptying the feed on the next poll.
       const result = new Map(client.getQueryData<Map<number, LiveGame>>(queryKey));
@@ -279,6 +281,9 @@ export function useConference(games: Game[]) {
           if (messages.length) {
             const ticker = parseTicker(messages, teams?.team_home ? teams : undefined);
             result.set(game.id, ticker);
+            // Publish each received match immediately; a slow ticker later in
+            // the round must not hold back goals already received.
+            client.setQueryData(queryKey, new Map(result));
             client.setQueryData(['ticker', token], messages);
             if (ticker.phase === 'Ende') rememberResult(client, token, ticker);
           }
@@ -294,6 +299,8 @@ export function useConference(games: Game[]) {
     enabled: ticked.length > 0,
     retry: false,
     placeholderData: keepPreviousData,
-    refetchInterval: Math.max(CONFERENCE_MIN_MS, ticked.length * CONFERENCE_MS_PER_GAME),
+    // React Query starts the interval after the request completes. Count time
+    // spent fetching towards the round budget instead of adding it twice.
+    refetchInterval: () => Math.max(CONFERENCE_GAP_MS, Math.max(CONFERENCE_MIN_MS, ticked.length * CONFERENCE_MS_PER_GAME) - (Date.now() - roundStarted.current)),
   }).data;
 }

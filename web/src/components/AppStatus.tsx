@@ -37,16 +37,24 @@ export function AppStatus() {
     };
     const didInstall = () => { setStandalone(true); setInstallPrompt(null); };
     const checkUpdate = () => {
-      if (document.visibilityState !== 'visible' || !navigator.onLine || Date.now() - lastUpdate.current < 60 * 60_000) return;
+      if (document.visibilityState !== 'visible' || !navigator.onLine || !registration.current || Date.now() - lastUpdate.current < 5 * 60_000) return;
       lastUpdate.current = Date.now();
       void registration.current?.update().catch(() => {});
     };
+    const updateTimer = window.setInterval(checkUpdate, 60_000);
+    window.addEventListener('focus', checkUpdate);
+    window.addEventListener('pageshow', checkUpdate);
+    window.addEventListener('online', checkUpdate);
     window.addEventListener('online', connection);
     window.addEventListener('offline', connection);
     window.addEventListener('beforeinstallprompt', beforeInstall);
     window.addEventListener('appinstalled', didInstall);
     document.addEventListener('visibilitychange', checkUpdate);
     return () => {
+      window.clearInterval(updateTimer);
+      window.removeEventListener('focus', checkUpdate);
+      window.removeEventListener('pageshow', checkUpdate);
+      window.removeEventListener('online', checkUpdate);
       window.removeEventListener('online', connection);
       window.removeEventListener('offline', connection);
       window.removeEventListener('beforeinstallprompt', beforeInstall);

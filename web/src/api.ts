@@ -77,6 +77,14 @@ interface LiveLeague {
   table: TableRow[];
 }
 
+/** Seed a returning view with live data already received in this session. */
+function cachedGame(client: QueryClient, season: number, game: Game): Game {
+  const official = !game.liveFlag && game.homePoints != null && game.guestPoints != null && game.homePoints + game.guestPoints === 2;
+  const fields = official ? undefined : client.getQueryData<LiveLeague>(['h4a', season, game.leagueId])?.games.get(game.id);
+  const next = withToken(refresh(fields ? { ...game, ...fields } : game));
+  return applyTickerResult(next, next.tickerToken ? client.getQueryData<LiveGame>(['tickerResult', next.tickerToken]) : undefined);
+}
+
 function fetchLive(client: QueryClient, season: number, leagueId: number): Promise<LiveLeague | null> {
   return client.fetchQuery({
     queryKey: ['h4a', season, leagueId],
@@ -99,29 +107,33 @@ function fetchLive(client: QueryClient, season: number, leagueId: number): Promi
 }
 
 /** Refreshes statuses and, for leagues with a running game, merges live scores from h4a. */
-async function withLive(client: QueryClient, season: number, games: Game[]): Promise<{ games: Game[]; tables: Map<number, TableRow[]> }> {
+interface LiveSnapshot { games: Game[]; tables: Map<number, TableRow[]> }
+
+async function withLive(client: QueryClient, season: number, games: Game[], onUpdate?: (data: LiveSnapshot) => void): Promise<LiveSnapshot> {
   const finalResult = (game: Game) => applyTickerResult(game, game.tickerToken ? client.getQueryData<LiveGame>(['tickerResult', game.tickerToken]) : undefined);
-  const refreshed = games.map((g) => finalResult(withToken(refresh(g))));
+  const refreshed = games.map((g) => cachedGame(client, season, g));
   const active = [...new Set(refreshed.filter((g) => isActive(g)).map((g) => g.leagueId))];
   const tables = new Map<number, TableRow[]>();
   if (!active.length) return { games: refreshed, tables };
   const live = new Map<number, LiveLeague>();
+  const snapshot = (): LiveSnapshot => ({
+    games: refreshed.map((g) => {
+      const fields = live.get(g.leagueId)?.games.get(g.id);
+      return fields ? finalResult(withToken(refresh({ ...g, ...fields }))) : g;
+    }),
+    tables: new Map(tables),
+  });
   await Promise.all(
     active.map(async (id) => {
       const data = await fetchLive(client, season, id);
       if (data) {
         live.set(id, data);
         tables.set(id, data.table);
+        onUpdate?.(snapshot());
       }
     }),
   );
-  return {
-    games: refreshed.map((g) => {
-      const fields = live.get(g.leagueId)?.games.get(g.id);
-      return fields ? finalResult(withToken(refresh({ ...g, ...fields }))) : g;
-    }),
-    tables,
-  };
+  return snapshot();
 }
 
 export function useIndex() {
@@ -157,6 +169,7 @@ export function useLeague(id: number | undefined) {
     queryKey: ['league', season, id],
     queryFn: async () => {
       const league = await get<League>(`s/${season}/league/${id}`);
+      client.setQueryData(['league', season, id], { ...league, games: league.games.map((game) => cachedGame(client, season!, game)) });
       const { games, tables } = await withLive(client, season!, league.games);
       return { ...league, games, table: tables.get(league.id) ?? league.table };
     },
@@ -180,13 +193,15 @@ export function useGames(from?: string, to?: string) {
   });
   const selection = useMemo(() => published.data?.filter((g) => g.ts >= start && g.ts < end), [published.data, start, end]);
   const query = useQuery({
-    queryKey: ['games', season, from, to, published.dataUpdatedAt],
+    queryKey: ['games', season, from, to],
     queryFn: async () => {
-      return (await withLive(client, season!, selection!)).games;
+      return (await withLive(client, season!, selection!, (data) => {
+        client.setQueryData(['games', season, from, to], data.games);
+      })).games;
     },
     enabled: season !== undefined && selection !== undefined,
     // Published fixtures render immediately while live league requests are spaced out.
-    placeholderData: () => selection?.map(refresh),
+    placeholderData: () => selection?.map((game) => cachedGame(client, season!, game)),
     refetchInterval: (q) => pollInterval(q.state.data),
   });
   const error = query.data ? null : published.error ?? query.error;
@@ -218,6 +233,7 @@ export function useGame(id: number) {
     queryKey: ['game', season, id],
     queryFn: async () => {
       const detail = await get<GameDetail>(`s/${season}/game/${id}`);
+      client.setQueryData(['game', season, id], { ...detail, game: cachedGame(client, season!, detail.game) });
       const [game] = (await withLive(client, season!, [detail.game])).games;
       return { ...detail, game };
     },
@@ -233,6 +249,7 @@ export function useTeam(id: number) {
     queryKey: ['team', season, id],
     queryFn: async () => {
       const detail = await get<TeamDetail>(`s/${season}/team/${id}`);
+      client.setQueryData(['team', season, id], { ...detail, games: detail.games.map((game) => cachedGame(client, season!, game)) });
       const { games, tables } = await withLive(client, season!, detail.games);
       const liveRow = tables.get(detail.league.id)?.find((r) => r.teamId === id);
       return { ...detail, games, tableRow: liveRow ?? detail.tableRow };
