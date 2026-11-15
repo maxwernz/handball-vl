@@ -8,7 +8,7 @@ import type { Game, League, Meta, SiteIndex } from '../shared/types.ts';
 import { config } from '../pipeline/config.ts';
 import { exportAll, reportPending } from '../pipeline/export.ts';
 import { write } from '../pipeline/store.ts';
-import { detailCandidates, keys, shouldRefreshLeague, syncDetails } from '../pipeline/sync.ts';
+import { detailCandidates, keys, shouldRefreshLeague, syncDetails, syncLeague } from '../pipeline/sync.ts';
 import { resolveTeamNames } from '../pipeline/teams.ts';
 import { fetchReportPdf } from '../pipeline/h4a.ts';
 import { RateLimitedError } from '../pipeline/http.ts';
@@ -25,6 +25,35 @@ const table = [
   { tabTeamID: '1', numPlayedGames: 1, numWonGames: 0, numEqualGames: 0, numLostGames: 1, numGoalsShot: 19, numGoalsGot: 36, pointsPlus: 0, pointsMinus: 2 },
   { tabTeamID: '2', numPlayedGames: 1, numWonGames: 1, numEqualGames: 0, numLostGames: 0, numGoalsShot: 36, numGoalsGot: 19, pointsPlus: 2, pointsMinus: 0 },
 ] as RawScore[];
+
+test('an undated replay does not block fresh league results and export', async () => {
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'handball-undated-test-'));
+  const original = { dataDir: config.dataDir, outDir: config.outDir, fetch: globalThis.fetch };
+  config.dataDir = path.join(temporary, 'data');
+  config.outDir = path.join(temporary, 'api');
+  const ref = { id: 161171, short: 'M-LL-3-BW', name: 'Männer-Landesliga Staffel 3' };
+  const finished = { ...rawGame, gID: '9391731', sGID: '1', gDate: '14.11.26', gTime: '20:00', gNo: '901680' };
+  const replay = { ...finished, gID: '9845941', gDate: '', gTime: '', gHomeGoals: ' ', gGuestGoals: ' ', gHomePoints: ' ', gGuestPoints: ' ', gComment: 'Wiederholung von 901680' };
+  globalThis.fetch = async () => Response.json([{ head: { actualized: '14.11.2026' }, content: {
+    teamsList: teams, score: table, scoreComments: [], futureGames: { games: [finished, replay] }, actualGames: [],
+  } }]);
+  try {
+    await write(keys.leagues(142), [ref]);
+    const league = await syncLeague(142, ref);
+    assert.equal(league.table.length, 2);
+    assert.deepEqual(league.games.map((g) => g.id), [9391731]);
+    assert.equal(league.games[0].homeGoals, 19);
+    await exportAll({ seasons: [{ id: 142, name: '2026/27' }], current: 142, updatedAt: league.updatedAt }, { refreshLogos: false });
+    const games = JSON.parse(await fs.readFile(path.join(config.outDir, 's/142/games.json'), 'utf8')) as Game[];
+    assert.equal(games[0].status, 'finished');
+    assert.equal(games[0].homeGoals, 19);
+  } finally {
+    config.dataDir = original.dataDir;
+    config.outDir = original.outDir;
+    globalThis.fetch = original.fetch;
+    await fs.rm(temporary, { recursive: true, force: true });
+  }
+});
 
 test('team names resolve from unique exact result records, with blank future scores ignored', () => {
   const future = { ...rawGame, gHomeGoals: ' ', gGuestGoals: ' ', gHomePoints: ' ', gGuestPoints: ' ' };
@@ -52,6 +81,19 @@ test('inactive leagues reuse fresh data and kickoff windows always refresh', () 
   assert.equal(shouldRefreshLeague({ ...league, updatedAt: new Date(now - 24 * 3600_000).toISOString() }, now), true);
   assert.equal(shouldRefreshLeague({ ...league, updatedAt: 'invalid' }, now), true);
   assert.equal(shouldRefreshLeague(null, now), true);
+});
+
+test('late imports refresh missing final results after the live window', () => {
+  const now = Date.parse('2026-11-14T22:54:03Z');
+  const league = {
+    updatedAt: '2026-11-14T18:49:52.433Z',
+    games: [{ ts: Date.parse('2026-11-14T19:00:00Z'), status: 'scheduled' }],
+  } as League;
+  assert.equal(shouldRefreshLeague(league, now), true);
+  assert.equal(shouldRefreshLeague({ ...league, games: [{ ...league.games[0], status: 'live' }] }, now), true);
+  assert.equal(shouldRefreshLeague({ ...league, games: [{ ...league.games[0], status: 'finished' }] }, now), false);
+  const recent = { ...league, updatedAt: new Date(now).toISOString() };
+  assert.equal(shouldRefreshLeague({ ...recent, games: [{ ts: now - 25 * 3600_000, status: 'scheduled' }] as Game[] }, now), false, 'postponed games must not force refresh forever');
 });
 
 test('bounded report backfill covers each league before adding older reports', () => {

@@ -44,11 +44,18 @@ let teamLookups = 0;
 /** Refresh around kickoff; otherwise retain a recent snapshot to limit source traffic. */
 export function shouldRefreshLeague(league: League | null, now = Date.now()): boolean {
   if (!league || !Number.isFinite(Date.parse(league.updatedAt)) || now - Date.parse(league.updatedAt) >= config.leagueRefreshMinutes * 60_000) return true;
-  return league.games.some((g) => now >= g.ts - 30 * 60_000 && now <= g.ts + 180 * 60_000);
+  return league.games.some((g) =>
+    now >= g.ts - 30 * 60_000 && now <= g.ts + 180 * 60_000
+    // A delayed workflow must still collect finals after the live window.
+    // Stop after a day so postponed fixtures do not force refresh forever.
+    || g.status !== 'finished' && now >= g.ts && now <= g.ts + 24 * 3600_000,
+  );
 }
 
 function normalizeGames(raw: RawGame[], leagueId: number, shortToId: Map<string, number>, teamCount: number): Game[] {
-  const games: Game[] = raw.map((g) => {
+  // Replays can appear before h4a assigns a date. They cannot enter a dated
+  // schedule yet, but must not prevent the rest of the league from updating.
+  const games: Game[] = raw.filter((g) => g.gDate?.trim()).map((g) => {
     const kickoff = parseKickoff(g.gDate, g.gTime);
     const game: Game = {
       id: Number(g.gID),
