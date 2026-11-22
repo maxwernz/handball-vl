@@ -22,8 +22,9 @@ import { config } from './config.ts';
 import { reportUrl } from './h4a.ts';
 import { logoColor, logoFor } from './logos.ts';
 import { seasonData, summarizePlayer, type SeasonData } from './stats.ts';
-import { exists, filePath, read } from './store.ts';
+import { exists, read } from './store.ts';
 import { keys, type SeasonIndex } from './sync.ts';
+import { weekStart } from '../shared/dates.ts';
 
 const toRef = ({ id, short, name }: LeagueRef): LeagueRef => ({ id, short, name });
 let exportDir = config.outDir;
@@ -65,16 +66,21 @@ function summary(data: SeasonData, finished: Game[], inLeague: (l: number) => bo
   return result;
 }
 
-/** Stats of one league, all men's or all women's leagues, or (null) everything for search and comparison. */
+/** Statistics for one league, all men's or women's leagues, or the full comparison scope. */
 function stats(data: SeasonData, scope: number | Gender | null): StatsResponse {
   const genders = new Map(data.leagues.map((l) => [l.id, leagueGender(l)]));
   const inLeague = (l: number) => scope === null || (typeof scope === 'number' ? l === scope : genders.get(l) === scope);
   const finished = data.games.filter((g) => g.status === 'finished' && inLeague(g.leagueId));
+  const reports = finished.flatMap((game) => {
+    const report = data.reports.get(game.id);
+    return report ? [report] : [];
+  });
   return {
     players: [...data.players.values()].filter((p) => inLeague(p.leagueId)).map(summarizePlayer),
     teams: [...data.teams.values()].filter((t) => inLeague(t.leagueId)),
-    reports: finished.filter((g) => data.reports.has(g.id)).length,
+    reports: reports.length,
     finished: finished.length,
+    fieldGoals: reports.reduce((count, report) => count + report.events.filter((event) => event.type === 'goal').length, 0),
     summary: summary(data, finished, inLeague),
   };
 }
@@ -98,19 +104,23 @@ function topScorers(data: SeasonData): Record<number, GameScorer[]> {
 async function exportLogos(data: SeasonData) {
   const logos: Record<number, string> = {};
   const colors: Record<number, string> = {};
+  const copied = new Map<string, string | null>();
   await fs.mkdir(path.join(exportDir, 'logos'), { recursive: true });
   for (const team of data.leagues.flatMap((l) => l.teams)) {
     const file = await logoFor(team.name, allowLogoLookups);
     if (!file) continue;
     const name = path.basename(file);
-    try {
-      await fs.copyFile(filePath(file), path.join(exportDir, 'logos', name));
-    } catch {
-      console.warn(`cached logo missing for ${team.name}; using team initials`);
-      continue;
+    if (!copied.has(file)) {
+      try {
+        await fs.copyFile(file, path.join(exportDir, 'logos', name));
+      } catch {
+        console.warn(`cached logo missing for ${team.name}; using team initials`);
+        continue;
+      }
+      copied.set(file, await logoColor(file).catch(() => null));
     }
     logos[team.id] = name;
-    const color = await logoColor(file).catch(() => null);
+    const color = copied.get(file);
     if (color) colors[team.id] = color;
   }
   return { logos, colors };
@@ -124,36 +134,55 @@ export function reportPending(game: Game, hasReport: boolean, failedAttempt: boo
   return now - game.ts < GIVE_UP_MS || (game.reportId !== null && !failedAttempt);
 }
 
-async function pendingReports(data: SeasonData) {
+async function publishGames(data: SeasonData) {
   const pending: Record<number, number> = {};
-  for (const game of data.games) {
-    if (game.status !== 'finished' || data.reports.has(game.id)) continue;
-    const failed = await exists(keys.reportAttempt(game.id));
-    if (reportPending(game, false, failed)) pending[game.leagueId] = (pending[game.leagueId] ?? 0) + 1;
+  const weeks = new Map<string, Game[]>();
+  const gamesById = new Map<number, Game>();
+  for (const game of [...data.games].sort((a, b) => a.ts - b.ts)) {
+    let published = game;
+    if (game.status === 'finished') {
+      const reportStatus = data.reports.has(game.id) ? 'available'
+        : reportPending(game, false, await exists(keys.reportAttempt(game.id))) ? 'pending' : 'unavailable';
+      published = { ...game, reportStatus };
+      if (reportStatus === 'pending') pending[game.leagueId] = (pending[game.leagueId] ?? 0) + 1;
+    }
+    const week = weekStart(game.date);
+    if (!weeks.has(week)) weeks.set(week, []);
+    weeks.get(week)!.push(published);
+    gamesById.set(game.id, published);
   }
-  return pending;
+  return { pending, weeks, gamesById };
 }
 
 async function exportSeason(season: number, current: boolean) {
   const data = await seasonData(season);
   const base = `s/${season}`;
+  const { pending, weeks, gamesById } = await publishGames(data);
+  const scorers = topScorers(data);
 
   const meta: Meta = {
     season,
+    weeks: [...weeks.keys()],
     // Publish links only after a league snapshot exists, including partial syncs.
     leagues: data.leagues.map(toRef),
     ...(await exportLogos(data)),
     teams: data.leagues.flatMap((l) => l.teams.map((t) => ({ id: t.id, name: t.name, leagueId: l.id }))),
-    pendingReports: await pendingReports(data),
+    pendingReports: pending,
   };
   await emit(`${base}/meta`, meta);
-  await emit(`${base}/games`, [...data.games].sort((a, b) => a.ts - b.ts));
+  await emit(`${base}/games`, [...gamesById.values()]);
+  for (const [week, games] of weeks) {
+    await emit(`${base}/week/${week}`, games);
+    await emit(`${base}/week-scorers/${week}`, Object.fromEntries(games.filter((game) => scorers[game.id]).map((game) => [game.id, scorers[game.id]])));
+  }
+  await emit(`${base}/player-search`, [...data.players.values()].map(({ key, name, teamId, leagueId, goals }) => ({ key, name, teamId, leagueId, goals })));
   await emit(`${base}/stats`, stats(data, null));
   // Rankings across leagues stay within men's or women's handball.
   for (const gender of ['M', 'F'] as const) await emit(`${base}/stats-${gender}`, stats(data, gender));
-  await emit(`${base}/scorers`, topScorers(data));
+  await emit(`${base}/scorers`, scorers);
 
-  for (const league of data.leagues) {
+  for (const source of data.leagues) {
+    const league = { ...source, games: source.games.map((game) => gamesById.get(game.id)!) };
     await emit(`${base}/league/${league.id}`, league);
     await emit(`${base}/stats-${league.id}`, stats(data, league.id));
 

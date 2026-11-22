@@ -21,11 +21,3 @@ export function parseKickoff(date: string, time: string): { local: string; ts: n
   const ts = asUtc - offsetMinutes(new Date(asUtc)) * 60_000;
   return { local, ts };
 }
-
-/** Monday (local date string) of the week containing the local ISO date. */
-export function weekStart(localIso: string): string {
-  const day = new Date(`${localIso.slice(0, 10)}T12:00:00Z`);
-  const weekday = (day.getUTCDay() + 6) % 7;
-  day.setUTCDate(day.getUTCDate() - weekday);
-  return day.toISOString().slice(0, 10);
-}

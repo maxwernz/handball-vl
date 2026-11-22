@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from 'react-router';
-import { useMeta, useStats } from '../api.ts';
+import { useMeta, usePlayerSearch } from '../api.ts';
 import { TeamLogo } from '../components/TeamLogo.tsx';
 import { Empty, ErrorBox, Loading, Section } from '../components/ui.tsx';
 import { leagueLabel } from '../lib/format.ts';
@@ -13,15 +13,16 @@ export function SearchPage() {
   const [params, setParams] = useSearchParams();
   const query = params.get('q') ?? '';
   const { data: meta, error: metaError } = useMeta();
-  const { data: stats, error: statsError, isPending } = useStats(null);
   const matches = matcher(query);
+  const { data: playerIndex, error: playerError, isPending } = usePlayerSearch(meta, Boolean(matches));
+  const teamNames = new Map(meta?.teams.map((team) => [team.id, team.name]));
   const league = (id: number) => leagueLabel(meta?.leagues.find((l) => l.id === id)?.short ?? '');
   // Everything stays findable; the men's or women's results chosen in the header come first.
   const gender = useGender();
   const genderOf = genderLookup(meta?.leagues);
   const preferred = (leagueId: number) => Number(gender !== 'all' && genderOf(leagueId) !== gender);
   const teams = matches ? (meta?.teams ?? []).filter((t) => matches(t.name)).sort((a, b) => preferred(a.leagueId) - preferred(b.leagueId)) : [];
-  const players = matches ? (stats?.players ?? []).filter((p) => matches(p.name)).sort((a, b) => preferred(a.leagueId) - preferred(b.leagueId) || b.goals - a.goals) : [];
+  const players = matches ? (playerIndex ?? []).filter((p) => matches(p.name)).sort((a, b) => preferred(a.leagueId) - preferred(b.leagueId) || b.goals - a.goals) : [];
   const row = 'flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-(--color-surface-2)';
 
   return (
@@ -35,10 +36,10 @@ export function SearchPage() {
         aria-label="Team oder Spieler suchen"
         className="mb-4 w-full rounded-xl border border-(--color-line) bg-(--color-surface) px-4 py-3 text-base outline-none focus:border-(--color-brand)"
       />
-      {metaError || statsError ? <ErrorBox error={metaError ?? statsError} /> : !matches ? (
+      {metaError ? <ErrorBox error={metaError} /> : !matches ? (
         <Empty>Gib einen Namen ein – gesucht wird in allen Teams und Spielern der Saison.</Empty>
-      ) : isPending && !teams.length ? <Loading /> : !teams.length && !players.length ? (
-        <Empty>{stats ? `Nichts gefunden für „${query}“.` : 'Suche …'}</Empty>
+      ) : isPending && !teams.length ? <Loading /> : !teams.length && !players.length && !playerError ? (
+        <Empty>Nichts gefunden für „{query}“.</Empty>
       ) : (
         <>
           {teams.length > 0 && (
@@ -59,10 +60,10 @@ export function SearchPage() {
               <div className="card divide-y divide-(--color-line) overflow-hidden">
                 {players.slice(0, MAX_RESULTS).map((p) => (
                   <Link key={p.key} to={`/spieler/${p.key}`} className={row}>
-                    <TeamLogo teamId={p.teamId} name={p.team} size={26} />
+                    <TeamLogo teamId={p.teamId} name={teamNames.get(p.teamId) ?? ''} size={26} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{p.name}</span>
-                      <span className="block truncate text-xs text-(--color-ink-3)">{p.team} · {league(p.leagueId)}</span>
+                      <span className="block truncate text-xs text-(--color-ink-3)">{teamNames.get(p.teamId)} · {league(p.leagueId)}</span>
                     </span>
                     <span className="tabular shrink-0 text-xs text-(--color-ink-3)">
                       {p.goals} {p.goals === 1 ? 'Tor' : 'Tore'}
@@ -73,6 +74,7 @@ export function SearchPage() {
               {players.length > MAX_RESULTS && <p className="mt-2 px-1 text-xs text-(--color-ink-3)">Weitere Treffer – gib mehr Buchstaben ein.</p>}
             </Section>
           )}
+          {playerError && <p className="status-notice" role="status">Die Spielersuche ist gerade nicht verfügbar.</p>}
         </>
       )}
     </div>

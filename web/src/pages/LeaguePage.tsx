@@ -176,11 +176,9 @@ function StatsTab({ league }: { league: League }) {
   return (
     <>
       <ReportsNotice leagueId={league.id} />
-      <p className="mb-4 px-1 text-xs text-(--color-ink-3)">
-        Aus {data.reports} von {data.finished} Spielberichten ausgewertet.
-      </p>
       <LeagueSummaryView data={data} />
       <Section title="Spieler">
+        <p className="mb-3 text-sm text-(--color-ink-2)">Spielberichte für {data.reports} von {data.finished} beendeten Spielen ausgewertet. Feldtore sind Tore ohne Siebenmeter.</p>
         <Chips
           options={PLAYER_VIEWS}
           value={playerView}

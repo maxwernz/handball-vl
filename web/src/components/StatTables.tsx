@@ -17,10 +17,11 @@ function PlayerCell({ p, showTeam }: { p: PlayerStats; showTeam: boolean }) {
   );
 }
 
-export type PlayerView = 'goals' | 'share' | 'seven' | 'penalties';
+export type PlayerView = 'goals' | 'field' | 'share' | 'seven' | 'penalties';
 
 export const PLAYER_VIEWS: { id: PlayerView; label: string }[] = [
   { id: 'goals', label: 'Torschützen' },
+  { id: 'field', label: 'Feldtore' },
   { id: 'share', label: 'Anteil & Serien' },
   { id: 'seven', label: '7-Meter' },
   { id: 'penalties', label: 'Strafen' },
@@ -51,6 +52,10 @@ export function PlayerTable({
   const leagueCol: Column<PlayerStats>[] = leagues && leagues.length > 1 ? [{ id: 'league', label: 'Liga', align: 'left', hideBelow: 'md', value: league }] : [];
   const no: Column<PlayerStats> = { id: 'no', label: 'Nr.', title: 'Trikotnummer im letzten verfügbaren Spielbericht', value: (p) => Number(p.no) || 0, render: (p) => p.no || '–' };
   const games: Column<PlayerStats> = { id: 'games', label: 'Sp', title: 'Spiele', value: (p) => p.games };
+  const fieldGoals = (p: PlayerStats) => p.goals - p.sevenGoals;
+  const goals: Column<PlayerStats> = { id: 'goals', label: 'Tore', title: 'Tore insgesamt', value: (p) => p.goals };
+  const field: Column<PlayerStats> = { id: 'field', label: 'Feldtore', value: fieldGoals };
+  const seven: Column<PlayerStats> = { id: 'seven', label: '7m', title: '7-Meter-Tore', hideBelow: 'sm', value: (p) => p.sevenGoals };
 
   const byView: Record<PlayerView, { columns: Column<PlayerStats>[]; sort: string; filter?: (p: PlayerStats) => boolean }> = {
     goals: {
@@ -60,10 +65,24 @@ export function PlayerTable({
         name,
         ...leagueCol,
         games,
-        { id: 'goals', label: 'Tore', value: (p) => p.goals },
-        { id: 'avg', label: 'Ø', title: 'Tore pro Spiel', value: (p) => (p.games ? p.goals / p.games : 0), render: (p) => perGame(p.goals, p.games) },
-        { id: 'field', label: 'Feld', title: 'Feldtore', hideBelow: 'sm', value: (p) => p.goals - p.sevenGoals },
-        { id: 'seven', label: '7m', title: '7-Meter-Tore', hideBelow: 'sm', value: (p) => p.sevenGoals },
+        goals,
+        field,
+        { id: 'avg', label: 'Ø', title: 'Tore pro Spiel', hideBelow: 'sm', value: (p) => (p.games ? p.goals / p.games : 0), render: (p) => perGame(p.goals, p.games) },
+        seven,
+      ],
+    },
+    field: {
+      sort: 'field',
+      filter: (p) => fieldGoals(p) > 0,
+      columns: [
+        no,
+        name,
+        ...leagueCol,
+        games,
+        field,
+        goals,
+        { id: 'fieldAvg', label: 'Ø', title: 'Feldtore pro Spiel', hideBelow: 'sm', value: (p) => (p.games ? fieldGoals(p) / p.games : 0), render: (p) => perGame(fieldGoals(p), p.games) },
+        seven,
       ],
     },
     share: {

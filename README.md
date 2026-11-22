@@ -30,8 +30,8 @@ team/       Interne, passwortgeschützte Mannschaftsstatistik unter /intern/ (si
 | Live-Spielstände | die App fragt während laufender Spiele direkt bei h4a nach (ab 20 s, bei vielen gleichzeitig aktiven Ligen seltener) |
 | Live-Ticker | h4a-Ticker-Service, mit dem Token (`gToken`), das h4a während eines getickerten Spiels in den Ligadaten mitliefert |
 
-Der BWHV ist auf der neuen handball.net-Plattform nicht mit Spielbetrieb vertreten, deshalb kommen die
-Spieldaten von h4a und nur die Logos von handball.net.
+Der BWHV ist auf der neuen handball.net-Plattform nicht mit Spielbetrieb vertreten. Die Spieldaten kommen
+von h4a, die Logos aus Vereinsquellen, von handball.net und von Handball-Papst.
 
 ### Rücksicht auf h4a
 
@@ -129,7 +129,8 @@ abzufragen. Vor Veröffentlichungen per Push oder manuellem Workflow laufen zus�
 
 ### Logos korrigieren
 
-Logos werden per Namensähnlichkeit zugeordnet. Falsche oder fehlende Logos lassen sich in
+Geprüfte Vereinswappen mit Bildquellen liegen in `pipeline/club-logos/`. Für weitere Mannschaften
+sucht der Export per Namensähnlichkeit. Falsche oder fehlende Logos lassen sich in
 `data/logo-overrides.json` (im Branch `data`) festlegen – Schlüssel ist der Teamname ohne Mannschaftsnummer:
 
 ```json

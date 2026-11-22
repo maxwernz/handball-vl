@@ -1,11 +1,22 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
+import { berlinDay, weekStart } from '../../shared/dates.ts';
 
 const api = path.resolve('web/public/api');
 const read = (file: string) => JSON.parse(fs.readFileSync(path.join(api, `${file}.json`), 'utf8'));
 const season = read('index').currentSeason;
+const meta = read(`s/${season}/meta`);
 const template = read(`s/${season}/games`).find((g: any) => g.homeId && g.guestId);
+
+async function mockWeek(page: import('@playwright/test').Page, games: typeof template[]) {
+  const weeks = [...new Set(games.map((game) => weekStart(berlinDay(game.ts))))];
+  await page.route('**/api/s/*/meta.json', (route) => route.fulfill({ json: { ...meta, weeks } }));
+  await page.route('**/api/s/*/week/*.json', (route) => {
+    const week = new URL(route.request().url()).pathname.split('/').at(-1)?.replace('.json', '');
+    return route.fulfill({ json: games.filter((game) => weekStart(berlinDay(game.ts)) === week) });
+  });
+}
 
 test('conference shows a received goal while another ticker is still loading', async ({ page }) => {
   const now = Date.now();
@@ -14,7 +25,7 @@ test('conference shows a received goal while another ticker is still loading', a
   let release!: () => void;
   const slow = new Promise<void>((resolve) => { release = resolve; });
   let waiting = false;
-  await page.route('**/api/s/*/games.json', (route) => route.fulfill({ json: games }));
+  await mockWeek(page, games);
   await page.route('https://spo.handball4all.de/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.searchParams.get('cmd') === 'getAllTickerMessages') {
@@ -41,7 +52,7 @@ test('received league scores survive a return to the live overview during a slow
   let release!: () => void;
   const slow = new Promise<void>((resolve) => { release = resolve; });
   let waiting = false;
-  await page.route('**/api/s/*/games.json', (route) => route.fulfill({ json: games }));
+  await mockWeek(page, games);
   await page.route(`**/api/s/*/game/${games[0].id}.json`, (route) => route.fulfill({ json: {
     game: games[0], league: { id: template.leagueId, name: 'Testliga', short: 'M-VL-1-BW' }, report: null, summary: null, previous: [], reportUrl: null,
   } }));

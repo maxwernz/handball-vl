@@ -28,9 +28,9 @@ export function StatsPage() {
   const totals = useMemo(() => {
     const teams = data?.teams ?? [];
     const goals = teams.reduce((n, t) => n + t.goalsFor, 0);
-    const games = teams.reduce((n, t) => n + t.played, 0) / 2;
+    const fieldGoals = data?.fieldGoals ?? (data?.players ?? []).reduce((n, p) => n + p.goals - p.sevenGoals, 0);
     const top = [...(data?.players ?? [])].sort((a, b) => b.goals - a.goals)[0];
-    return { goals, games, top };
+    return { goals, fieldGoals, top };
   }, [data]);
 
   return (
@@ -57,14 +57,16 @@ export function StatsPage() {
         <ErrorBox error={error} />
       ) : (
         <>
-          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatTile label="Spiele" value={totals.games} hint={`${data.reports} Spielberichte ausgewertet`} />
-            <StatTile label="Tore" value={totals.goals} hint={`Ø ${perGame(totals.goals, totals.games)} pro Spiel`} />
+          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <StatTile label="Spiele" value={data.finished} />
+            <StatTile label="Tore" value={totals.goals} hint={`Ø ${perGame(totals.goals, data.finished)} pro Spiel`} />
+            <StatTile label="Feldtore" value={data.reports ? totals.fieldGoals : '–'} hint="Aus ausgewerteten Spielberichten" />
             <StatTile label="Spieler erfasst" value={data.players.length} />
             <StatTile label="Top-Torschütze" value={totals.top?.goals ?? '–'} hint={totals.top ? `${totals.top.name} (${totals.top.team})` : undefined} />
           </div>
           <LeagueSummaryView data={data} />
           <Section title="Spieler">
+            <p className="mb-3 text-sm text-(--color-ink-2)">Spielberichte für {data.reports} von {data.finished} beendeten Spielen ausgewertet. Feldtore sind Tore ohne Siebenmeter.</p>
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <input
                 type="search"

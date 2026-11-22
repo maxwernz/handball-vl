@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, type QueryClient, useQueryClient } from '@tanstack/react-query';
+import { berlinDay, shiftDay, weekStart } from '../../shared/dates.ts';
 import { gameStatus, isActive, leagueUrl, normalizeTable, rawGames, scoreFields, type LeagueResponse } from '../../shared/h4a.ts';
 import type {
   Game,
@@ -12,6 +13,7 @@ import type {
   League,
   Meta,
   PlayerDetail,
+  PlayerSearchEntry,
   SiteIndex,
   StatsResponse,
   TableRow,
@@ -178,25 +180,35 @@ export function useLeague(id: number | undefined) {
   });
 }
 
-/** All games of the season whose kickoff lies in [from, to). */
-export function useGames(from?: string, to?: string) {
-  const season = useSeasonId();
-  const client = useQueryClient();
-  const start = from ? Date.parse(from) : -Infinity;
-  const end = to ? Date.parse(to) : Infinity;
-  const published = useQuery({
-    queryKey: ['allGames', season],
-    queryFn: () => get<Game[]>(`s/${season}/games`),
-    enabled: season !== undefined,
+const EMPTY_GAMES: Game[] = [];
+
+function weekQuery(meta: Meta | undefined, week: string) {
+  return {
+    queryKey: meta?.weeks ? ['week', meta.season, week] : ['allGames', meta?.season],
+    queryFn: () => meta?.weeks
+      ? (meta.weeks.includes(week) ? get<Game[]>(`s/${meta.season}/week/${week}`) : EMPTY_GAMES)
+      : get<Game[]>(`s/${meta?.season}/games`),
     staleTime: POLL_MS,
+  };
+}
+
+function usePublishedWeek(meta: Meta | undefined, week: string, enabled = true) {
+  return useQuery({
+    ...weekQuery(meta, week),
+    enabled: enabled && meta !== undefined,
     refetchInterval: POLL_MS,
+    select: meta?.weeks ? undefined : (games) => games.filter((game) => weekStart(game.date) === week),
   });
-  const selection = useMemo(() => published.data?.filter((g) => g.ts >= start && g.ts < end), [published.data, start, end]);
+}
+
+function useGamesWithLive(season: number | undefined, scope: readonly unknown[], selection: Game[] | undefined) {
+  const client = useQueryClient();
+  const queryKey = ['games', season, ...scope];
   const query = useQuery({
-    queryKey: ['games', season, from, to],
+    queryKey,
     queryFn: async () => {
       return (await withLive(client, season!, selection!, (data) => {
-        client.setQueryData(['games', season, from, to], data.games);
+        client.setQueryData(queryKey, data.games);
       })).games;
     },
     enabled: season !== undefined && selection !== undefined,
@@ -204,12 +216,30 @@ export function useGames(from?: string, to?: string) {
     placeholderData: () => selection?.map((game) => cachedGame(client, season!, game)),
     refetchInterval: (q) => pollInterval(q.state.data),
   });
+  return query;
+}
+
+export function useWeekGames(meta: Meta, week: string) {
+  const client = useQueryClient();
+  const published = usePublishedWeek(meta, week);
+  const query = useGamesWithLive(meta.season, ['week', week], published.data);
+  useEffect(() => {
+    if (!published.data || !meta.weeks) return;
+    const timer = window.setTimeout(() => {
+      for (const offset of [-7, 7]) {
+        const neighbour = shiftDay(week, offset);
+        if (meta.weeks?.includes(neighbour)) void client.prefetchQuery(weekQuery(meta, neighbour));
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [client, meta, published.data, week]);
   const error = query.data ? null : published.error ?? query.error;
-  return { ...query, error, isPending: !error && !query.data && (published.isPending || query.isPending), isLoading: !error && !query.data && (published.isLoading || query.isLoading) };
+  return { ...query, error, isPending: query.isPending && !error };
 }
 
 /** Games that are running or about to start. */
 export function useLiveSchedule(includeFinished = false) {
+  const { data: meta, error: metaError } = useMeta();
   const [clock, setClock] = useState(Date.now);
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 60_000);
@@ -217,9 +247,22 @@ export function useLiveSchedule(includeFinished = false) {
   }, []);
   // Rounded to 5 minutes so the query key (and cache entry) stays stable between renders.
   const now = Math.floor(clock / 300_000) * 300_000;
-  const query = useGames(new Date(now - 4 * 3600_000).toISOString(), new Date(now + 3600_000).toISOString());
+  const start = now - 4 * 3600_000;
+  const end = now + 3600_000;
+  const firstWeek = weekStart(berlinDay(start));
+  const lastWeek = weekStart(berlinDay(end));
+  const crossesWeek = firstWeek !== lastWeek;
+  const first = usePublishedWeek(meta, firstWeek);
+  const last = usePublishedWeek(meta, lastWeek, crossesWeek);
+  const selection = useMemo(() => {
+    if (!first.data || (crossesWeek && !last.data)) return undefined;
+    const games = [...(first.data ?? []), ...(crossesWeek ? last.data ?? [] : [])];
+    return games.filter((game) => game.ts >= start && game.ts < end);
+  }, [first.data, last.data, crossesWeek, start, end]);
+  const query = useGamesWithLive(meta?.season, ['live', now], selection);
   const data = useMemo(() => query.data?.filter((g) => isActive(g) || includeFinished && g.status === 'finished') ?? [], [query.data, includeFinished, now]);
-  return { ...query, data };
+  const error = query.data ? null : metaError ?? first.error ?? (crossesWeek ? last.error : null) ?? query.error;
+  return { ...query, data, error, isPending: query.isPending && !error };
 }
 
 export function useLiveGames(): Game[] {
@@ -259,28 +302,37 @@ export function useTeam(id: number) {
   });
 }
 
-/** One league (id), all men's ('M') or women's ('F') leagues, or everything (null; for search). */
+/** One league, all men's or women's leagues, or the full comparison scope. */
 export function useStats(league: number | 'M' | 'F' | null) {
   const season = useSeasonId();
   return useQuery({
     queryKey: ['stats', season, league],
-    queryFn: () => get<StatsResponse>(`s/${season}/${league ? `stats-${league}` : 'stats'}`),
+    queryFn: () => get<StatsResponse>(`s/${season}/${league === null ? 'stats' : `stats-${league}`}`),
     enabled: season !== undefined,
     staleTime: POLL_MS,
   });
 }
 
-/** Best scorers per game id (best first), for all games of the season with a match report. */
-export function useTopScorers() {
-  const season = useSeasonId();
+export function usePlayerSearch(meta: Meta | undefined, enabled: boolean) {
   return useQuery({
-    queryKey: ['scorers', season],
+    queryKey: ['playerSearch', meta?.season, Boolean(meta?.weeks)],
+    queryFn: async () => meta?.weeks ? get<PlayerSearchEntry[]>(`s/${meta.season}/player-search`)
+      : (await get<StatsResponse>(`s/${meta?.season}/stats`)).players,
+    enabled: meta !== undefined && enabled,
+    staleTime: POLL_MS,
+  });
+}
+
+/** Best scorers per game id, for the selected match week. */
+export function useTopScorers(meta: Meta, week: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['scorers', meta.season, meta.weeks ? week : null],
     queryFn: async () => {
-      const data = await get<Record<number, GameScorer | GameScorer[]>>(`s/${season}/scorers`);
+      const data = await get<Record<number, GameScorer | GameScorer[]>>(`s/${meta.season}/${meta.weeks ? `week-scorers/${week}` : 'scorers'}`);
       // A copy cached offline may still hold a single scorer per game.
       return Object.fromEntries(Object.entries(data).map(([id, v]) => [id, Array.isArray(v) ? v : [v]])) as Record<number, GameScorer[]>;
     },
-    enabled: season !== undefined,
+    enabled,
     staleTime: POLL_MS,
   });
 }

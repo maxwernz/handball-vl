@@ -11,6 +11,6 @@ export function ReportsNotice({ leagueId }: { leagueId: number | Gender | null }
     : Object.entries(pending).filter(([id]) => leagueId === null || genderOf(Number(id)) === leagueId).reduce((sum, [, n]) => sum + n, 0);
   if (!count) return null;
   return <div className="status-notice" role="status">
-    {count === 1 ? 'Für 1 Spiel fehlt' : `Für ${count} Spiele fehlen`} noch der Spielbericht. Die Statistik wird automatisch ergänzt.
+    {count === 1 ? 'Ein Spielbericht steht noch aus.' : `${count} Spielberichte stehen noch aus.`} Die Statistik wird automatisch ergänzt.
   </div>;
 }

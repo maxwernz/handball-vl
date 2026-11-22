@@ -33,6 +33,7 @@ export function GameRow({
   const nameClass = (id: number | null, won: boolean) => `${won || fav(id) ? 'font-semibold' : ''} ${fav(id) ? 'text-(--color-brand)' : ''}`;
   const scoreColor = { W: 'bg-(--color-win)', D: 'bg-(--color-draw)', L: 'bg-(--color-loss)' };
   const played = game.status !== 'scheduled';
+  const reportNote = game.status === 'finished' && game.reportStatus === 'pending' ? 'Spielbericht ausstehend' : null;
   const homeWon = game.status === 'finished' && game.homeGoals! > game.guestGoals!;
   const guestWon = game.status === 'finished' && game.guestGoals! > game.homeGoals!;
   const scoreBox = `tabular rounded-lg text-sm font-bold ${outcome ? `${scoreColor[outcome]} text-(--color-brand-ink)` : played ? 'bg-(--color-surface-2)' : 'text-(--color-ink-3)'} ${game.status === 'live' ? 'text-(--color-live)' : ''}`;
@@ -44,7 +45,7 @@ export function GameRow({
     </>
   );
   return (
-    <Link to={`/spiel/${game.id}`} className="game-row block transition hover:bg-(--color-surface-2)" aria-label={`${game.home} gegen ${game.guest}, ${played ? `${game.homeGoals ?? '–'} zu ${game.guestGoals ?? '–'}` : `Anwurf ${formatTime(game.date)}`} ${game.status === 'live' ? ', live' : game.status === 'finished' ? ', beendet' : ''}`}>
+    <Link to={`/spiel/${game.id}`} className="game-row block transition hover:bg-(--color-surface-2)" aria-label={`${game.home} gegen ${game.guest}, ${played ? `${game.homeGoals ?? '–'} zu ${game.guestGoals ?? '–'}` : `Anwurf ${formatTime(game.date)}`} ${game.status === 'live' ? ', live' : game.status === 'finished' ? ', beendet' : ''}${reportNote ? `, ${reportNote}` : ''}`}>
       {/* Phones: teams stacked, so full names fit. */}
       <div className="flex items-center gap-3 px-3 py-3 lg:hidden">
         <div className="w-14 shrink-0 text-xs leading-tight text-(--color-ink-3)">{meta}</div>
@@ -83,6 +84,7 @@ export function GameRow({
           <span className={`truncate text-sm ${nameClass(game.guestId, guestWon)}`}>{game.guest}</span>
         </div>
       </div>
+      {reportNote && <p className="px-3 pb-2 text-right text-xs text-(--color-ink-3) lg:px-4">{reportNote}</p>}
     </Link>
   );
 }

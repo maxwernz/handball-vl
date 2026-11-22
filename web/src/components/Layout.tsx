@@ -75,7 +75,7 @@ export function Layout() {
       </main>
       <footer className="app-footer">
         <span className="footer-brand">HANDBALL BW</span>
-        <span>Ergebnisse & Spielberichte: handball4all / BWHV · Logos: handball.net</span>
+        <span>Ergebnisse & Spielberichte: handball4all / BWHV · Logos: handball.net, Vereine und Handball-Papst</span>
         {updated && <span>Datenstand {updated} Uhr · Live-Ergebnisse werden automatisch aktualisiert</span>}
         <a href={`${BASE}analyse/`} className="underline">Statistik-Werkbank: Tabellen, Diagramme, SQL</a>
       </footer>

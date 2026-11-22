@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
+import { berlinDay, shiftDay, weekStart } from '../../../shared/dates.ts';
 import type { Game, LeagueRef, Meta } from '../../../shared/types.ts';
-import { useGames, useLiveGames, useMeta } from '../api.ts';
+import { useWeekGames, useLiveGames, useMeta } from '../api.ts';
 import { GameList } from '../components/GameRow.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { LeagueShortcuts } from '../components/LeagueDirectory.tsx';
@@ -13,20 +14,6 @@ import { formatDay, isoDay, leagueLabel, leagueOrder, relativeDay } from '../lib
 import { matcher } from '../lib/search.ts';
 import { useStoredState } from '../lib/storage.ts';
 import { GENDER_LABEL, genderLookup, leagueGender, splitByGender, useGender } from '../lib/gender.ts';
-
-function berlinToday() {
-  const parts = new Intl.DateTimeFormat('en', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
-  const part = (type: string) => parts.find((p) => p.type === type)!.value;
-  return `${part('year')}-${part('month')}-${part('day')}`;
-}
-function shiftDay(day: string, by: number) {
-  const date = new Date(`${day}T12:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + by);
-  return date.toISOString().slice(0, 10);
-}
-function monday(day: string) {
-  return shiftDay(day, -((new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7));
-}
 
 type Scope = 'mine' | 'all';
 
@@ -47,7 +34,6 @@ function LeagueGroup({ league, games, open, onToggle, showDate }: { league: Leag
 }
 
 function MatchCenter({ meta, mine, onEditFavorites }: { meta: Meta; mine: ((game: Game) => boolean) | null; onEditFavorites: () => void }) {
-  const { data: games, isPending, error } = useGames();
   const favoriteLeagues = useFavoriteLeagues();
   const favoriteIds = useFavoriteTeamIds();
   const storedOpen = useOpenLeagues();
@@ -58,17 +44,13 @@ function MatchCenter({ meta, mine, onEditFavorites }: { meta: Meta; mine: ((game
   const [limit, setLimit] = useState(40);
   const gender = useGender();
   const genderOf = genderLookup(meta.leagues);
-  const today = berlinToday();
-  const currentWeek = monday(today);
-  const defaultWeek = useMemo(() => {
-    if (!games?.length || games.some((game) => isoDay(game.date) >= currentWeek && isoDay(game.date) < shiftDay(currentWeek, 7))) return currentWeek;
-    const sorted = [...games].sort((a, b) => a.ts - b.ts);
-    const next = sorted.find((game) => isoDay(game.date) >= today);
-    return monday(isoDay((next ?? sorted.at(-1)!).date));
-  }, [games, currentWeek, today]);
+  const today = berlinDay();
+  const currentWeek = weekStart(today);
+  const defaultWeek = meta.weeks?.find((available) => available >= currentWeek) ?? meta.weeks?.at(-1) ?? currentWeek;
   const week = selectedWeek ?? defaultWeek;
+  const { data: games, isPending, error } = useWeekGames(meta, week);
   const dates = Array.from({ length: 7 }, (_, index) => shiftDay(week, index));
-  const weeklyGames = useMemo(() => (games ?? []).filter((game) => isoDay(game.date) >= week && isoDay(game.date) < shiftDay(week, 7)).sort((a, b) => a.ts - b.ts || a.leagueId - b.leagueId), [games, week]);
+  const weeklyGames = useMemo(() => [...(games ?? [])].sort((a, b) => a.ts - b.ts || a.leagueId - b.leagueId), [games]);
   // "Alle Ligen" follows the men/women choice in the header; "Meine Spiele" shows every favorite.
   const filtered = weeklyGames.filter((game) => (scope === 'all' ? gender === 'all' || genderOf(game.leagueId) === gender : !mine || mine(game)));
   const visible = filtered.filter((game) => selectedDay === 'all' || isoDay(game.date) === selectedDay);
@@ -123,7 +105,7 @@ function MatchCenter({ meta, mine, onEditFavorites }: { meta: Meta; mine: ((game
     </> : <>
       {[...dayGroups].map(([day, list]) => <div key={day}><h2 className="day-heading">{relativeDay(day)}<span>{filtered.filter((game) => isoDay(game.date) === day).length} Spiele</span></h2><GameList games={list} showDate={false} leagueTag={tag} /></div>)}
       {visible.length > limit && <button className="button-secondary mt-4 w-full" onClick={() => setLimit((value) => value + 40)}>Weitere {Math.min(40, visible.length - limit)} Spiele anzeigen<Icon name="chevron-right" size={15} /></button>}
-      {splitByGender(visible, (game) => genderOf(game.leagueId)).map((section, _, all) => <MatchdayHighlights key={section.gender ?? 'other'} games={section.items} title={all.length > 1 && section.gender ? `Höhepunkte ${GENDER_LABEL[section.gender]}` : undefined} />)}
+      {splitByGender(visible, (game) => genderOf(game.leagueId)).map((section, _, all) => <MatchdayHighlights key={section.gender ?? 'other'} games={section.items} meta={meta} week={week} title={all.length > 1 && section.gender ? `Höhepunkte ${GENDER_LABEL[section.gender]}` : undefined} />)}
     </>}
   </section>;
 }

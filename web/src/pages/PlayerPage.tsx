@@ -94,6 +94,7 @@ export function PlayerPage() {
                   <th className="py-2 text-left font-medium">Gegner</th>
                   <th className="px-2 py-2 text-right font-medium">Erg.</th>
                   <th className="px-2 py-2 text-right font-medium">Tore</th>
+                  <th className="px-2 py-2 text-right font-medium">Feldtore</th>
                   <th className="hidden px-2 py-2 text-right font-medium sm:table-cell">7m</th>
                   <th className="py-2 pr-3 pl-2 text-right font-medium">Strafen</th>
                 </tr>
@@ -109,6 +110,7 @@ export function PlayerPage() {
                     </td>
                     <td className="px-2 py-2 text-right text-(--color-ink-2)">{g.result}</td>
                     <td className="px-2 py-2 text-right font-semibold">{g.goals}</td>
+                    <td className="px-2 py-2 text-right">{g.goals - g.sevenGoals}</td>
                     <td className="hidden px-2 py-2 text-right text-(--color-ink-2) sm:table-cell">{g.sevenAttempts ? `${g.sevenGoals}/${g.sevenAttempts}` : ''}</td>
                     <td className="py-2 pr-3 pl-2 text-right whitespace-nowrap">
                       {g.warning && <span className="mr-1 inline-block h-3.5 w-2.5 rounded-sm bg-(--color-draw) align-middle" title="Verwarnung" />}

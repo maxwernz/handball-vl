@@ -1,13 +1,13 @@
 import { Link } from 'react-router';
-import type { Game } from '../../../shared/types.ts';
+import type { Game, Meta } from '../../../shared/types.ts';
 import { useTopScorers } from '../api.ts';
 import { TeamLogo } from './TeamLogo.tsx';
 import { Section } from './ui.tsx';
 
 /** The selected matchday's highlights, using only available, validated reports. */
-export function MatchdayHighlights({ games, title = 'Höhepunkte der Auswahl' }: { games: Game[]; title?: string }) {
-  const { data: scorers } = useTopScorers();
+export function MatchdayHighlights({ games, meta, week, title = 'Höhepunkte der Auswahl' }: { games: Game[]; meta: Meta; week: string; title?: string }) {
   const finished = games.filter((game) => game.status === 'finished' && game.homeGoals !== null && game.guestGoals !== null);
+  const { data: scorers } = useTopScorers(meta, week, finished.length > 0);
   if (!finished.length) return null;
   const best = finished.flatMap((game) => (scorers?.[game.id] ?? []).map((scorer) => ({ game, scorer }))).sort((a, b) => b.scorer.goals - a.scorer.goals).slice(0, 3);
   const highest = finished.reduce((a, b) => Math.abs(b.homeGoals! - b.guestGoals!) > Math.abs(a.homeGoals! - a.guestGoals!) ? b : a);

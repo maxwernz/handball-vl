@@ -6,6 +6,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
+import bundledLogoSources from './club-logos/sources.json' with { type: 'json' };
 import { config } from './config.ts';
 import { fetchJson, fetchWithRetry } from './http.ts';
 import { filePath, read, write } from './store.ts';
@@ -15,6 +16,7 @@ const HEADERS = { Referer: 'https://www.handball.net/' };
 const INDEX_KEY = 'logos/index';
 /** Negative results are retried after this long. */
 const MISS_TTL_MS = 7 * 24 * 3600_000;
+const bundledLogos: Record<string, { file: string; source: string }> = bundledLogoSources;
 
 interface Club {
   id: string;
@@ -106,7 +108,7 @@ function slug(name: string) {
 const pending = new Map<string, Promise<string | null>>();
 let remainingLookups = config.logoLookupLimit;
 
-/** Path (relative to the data dir) of the logo for a team, resolving it on first use. */
+/** Local file for a team's logo, resolving it on first use. */
 export function logoFor(team: string, allowLookup = true): Promise<string | null> {
   const key = clubName(team);
   let job = pending.get(key);
@@ -121,14 +123,20 @@ async function resolveLogo(key: string, allowLookup: boolean): Promise<string | 
   const index = (await read<Record<string, IndexEntry>>(INDEX_KEY)) ?? {};
   const overrides = (await read<Record<string, string | null>>('logo-overrides')) ?? {};
   const entry = index[key];
-  const override = key in overrides ? overrides[key] : undefined;
+  const override = Object.hasOwn(overrides, key) ? overrides[key] : undefined;
+  const bundled = Object.hasOwn(bundledLogos, key) ? bundledLogos[key] : undefined;
+  const bundledFile = bundled ? path.join(import.meta.dirname, 'club-logos', bundled.file) : null;
+  if (override === null) return null;
+  if (override === undefined && bundledFile) return bundledFile;
+  const cachedFile = entry?.file ? filePath(entry.file) : null;
+  const fallback = cachedFile ?? bundledFile;
 
   if (entry && override === undefined) {
     const fresh = entry.file || Date.now() - Date.parse(entry.checkedAt) < MISS_TTL_MS;
-    if (fresh) return entry.file;
+    if (fresh) return cachedFile;
   }
-  if (entry && override !== undefined && entry.club === `override:${override}`) return entry.file;
-  if (!allowLookup || remainingLookups <= 0) return entry?.file ?? null;
+  if (entry && override !== undefined && entry.club === `override:${override}` && cachedFile) return cachedFile;
+  if (!allowLookup || remainingLookups <= 0) return fallback;
   remainingLookups--;
 
   let file: string | null = null;
@@ -136,7 +144,8 @@ async function resolveLogo(key: string, allowLookup: boolean): Promise<string | 
   try {
     if (override !== undefined) {
       club = `override:${override}`;
-      file = override ? await storeImage(override, slug(key)) : null;
+      file = await storeImage(override, slug(key));
+      if (!file) return fallback;
     } else {
       const match = await findClub(key);
       club = match?.name ?? null;
@@ -144,11 +153,11 @@ async function resolveLogo(key: string, allowLookup: boolean): Promise<string | 
     }
   } catch (err) {
     console.warn(`logo lookup failed for ${key}:`, (err as Error).message);
-    return entry?.file ?? null;
+    return fallback;
   }
   const latest = (await read<Record<string, IndexEntry>>(INDEX_KEY)) ?? {};
   await write(INDEX_KEY, { ...latest, [key]: { file, club, checkedAt: new Date().toISOString() } });
-  return file;
+  return file ? filePath(file) : null;
 }
 
 function toHsl(r: number, g: number, b: number): [number, number, number] {
@@ -179,7 +188,7 @@ const HUE_BINS = 24;
  * lightness that reads on light and dark backgrounds. Null for black-and-white logos.
  */
 export async function logoColor(file: string): Promise<string | null> {
-  const { data } = await sharp(filePath(file)).resize(48, 48, { fit: 'inside' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { data } = await sharp(file).resize(48, 48, { fit: 'inside' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const bins = Array.from({ length: HUE_BINS }, () => ({ weight: 0, x: 0, y: 0, s: 0, l: 0 }));
   let opaque = 0;
   let colored = 0;

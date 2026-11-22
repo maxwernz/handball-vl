@@ -33,8 +33,10 @@ export interface TableRow {
 }
 
 export type GameStatus = 'scheduled' | 'live' | 'finished';
+export type ReportStatus = 'available' | 'pending' | 'unavailable';
 
 export interface Game {
+  reportStatus?: ReportStatus;
   id: number;
   /** Id of the PDF match report; null until the game has been recorded. */
   reportId: number | null;
@@ -267,6 +269,8 @@ export interface SiteIndex {
 
 export interface Meta {
   season: number;
+  /** Mondays of Berlin calendar weeks with fixtures, in ascending order. */
+  weeks?: string[];
   leagues: LeagueRef[];
   /** Logo file per team id, relative to `api/logos/`; teams without a logo are missing. */
   logos: Record<number, string>;
@@ -304,5 +308,9 @@ export interface StatsResponse {
   teams: TeamStats[];
   reports: number;
   finished: number;
+  /** Non-penalty goals in validated match reports. */
+  fieldGoals?: number;
   summary: LeagueSummary;
 }
+
+export type PlayerSearchEntry = Pick<PlayerStats, 'key' | 'name' | 'teamId' | 'leagueId' | 'goals'>;

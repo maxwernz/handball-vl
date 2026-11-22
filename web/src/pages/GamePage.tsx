@@ -449,6 +449,11 @@ function GameView({ data }: { data: GameDetail }) {
     <div style={colorStyle(colors)}>
       <h1 className="sr-only">{game.home} gegen {game.guest}</h1>
       <Scoreboard data={data} ticker={report ? undefined : ticker} />
+      {game.status === 'finished' && !report && (
+        <p className="status-notice" role="status">
+          {game.reportStatus === 'unavailable' ? 'Endstand da · Kein offizieller Spielbericht verfügbar' : 'Endstand da · Spielbericht ausstehend'}
+        </p>
+      )}
       {tabs.length > 0 && <Tabs tabs={tabs} value={active!} onChange={setTab} />}
 
       <div {...swipe}>
@@ -479,11 +484,6 @@ function GameView({ data }: { data: GameDetail }) {
         {active === 'stats' && (report ?? ticker) && <MatchStatsView report={(report ?? ticker)!} data={data} />}
         {active === 'compare' && game.homeId !== null && game.guestId !== null && <Comparison homeId={game.homeId} guestId={game.guestId} upcoming={game.status === 'scheduled'} />}
 
-        {game.status === 'finished' && !report && (
-          <p className="mt-4 rounded-xl border border-(--color-line) px-4 py-3 text-sm text-(--color-ink-2)">
-            Das Spiel ist beendet. {ticker ? 'Der Ticker bleibt verfügbar. ' : ''}Der offizielle Spielbericht folgt, sobald er veröffentlicht wird.
-          </p>
-        )}
       </div>
 
       {data.previous.length > 0 && (

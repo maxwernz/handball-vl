@@ -16,7 +16,8 @@ import { fetchLeague, fetchOrg, fetchReportPdf, fetchRobotext } from './h4a.ts';
 import { RateLimitedError } from './http.ts';
 import { checkReport, parseReport, REPORT_PARSER_VERSION } from './report.ts';
 import { exists, read, write } from './store.ts';
-import { parseKickoff, weekStart } from './time.ts';
+import { weekStart } from '../shared/dates.ts';
+import { parseKickoff } from './time.ts';
 import { resolveTeamNames } from './teams.ts';
 
 export interface SeasonIndex {

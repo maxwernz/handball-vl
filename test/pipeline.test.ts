@@ -47,6 +47,11 @@ test('an undated replay does not block fresh league results and export', async (
     const games = JSON.parse(await fs.readFile(path.join(config.outDir, 's/142/games.json'), 'utf8')) as Game[];
     assert.equal(games[0].status, 'finished');
     assert.equal(games[0].homeGoals, 19);
+    assert.equal(games[0].reportStatus, 'pending');
+    const meta = JSON.parse(await fs.readFile(path.join(config.outDir, 's/142/meta.json'), 'utf8')) as Meta;
+    assert.deepEqual(meta.weeks, ['2026-11-09']);
+    assert.deepEqual(JSON.parse(await fs.readFile(path.join(config.outDir, 's/142/week/2026-11-09.json'), 'utf8')), games);
+    assert.equal(meta.pendingReports[ref.id], 1);
   } finally {
     config.dataDir = original.dataDir;
     config.outDir = original.outDir;

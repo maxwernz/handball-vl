@@ -12,7 +12,7 @@ test('installed app shell and visited results remain readable offline', async ({
   await expect(page.locator('.league-group').first()).toBeVisible();
   await expect.poll(() => page.evaluate(async () => {
     const cache = await caches.open('api');
-    return (await cache.keys()).some((request) => request.url.endsWith('/games.json'));
+    return (await cache.keys()).some((request) => /\/week\/\d{4}-\d{2}-\d{2}\.json$/.test(request.url));
   })).toBe(true);
   await context.setOffline(true);
   await page.reload();

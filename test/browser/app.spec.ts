@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { berlinDay, weekStart } from '../../shared/dates.ts';
 
 const api = path.resolve('web/public/api');
 const read = (file: string) => JSON.parse(fs.readFileSync(path.join(api, `${file}.json`), 'utf8'));
@@ -22,12 +23,16 @@ test.beforeEach(async ({ page }) => {
 
 test('match center, league discovery, filters and favorites work', async ({ page }, info) => {
   const errors: string[] = [];
+  const dataRequests: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  page.on('request', (request) => dataRequests.push(new URL(request.url()).pathname));
   await page.goto('./');
   await expect(page.getByRole('heading', { name: 'Dein Spieltag.' })).toBeVisible();
   // Without favorites every league starts collapsed, with a direct link to its table.
   const group = page.locator('.league-group').first();
   await expect(group).toBeVisible();
+  expect(dataRequests.some((url) => url.includes('/week/'))).toBe(true);
+  expect(dataRequests.some((url) => url.endsWith('/games.json'))).toBe(false);
   await expect(page.locator('.game-row')).toHaveCount(0);
   await group.locator('.league-group-toggle').click();
   await expect(group.locator('.game-row').first()).toBeVisible();
@@ -72,6 +77,12 @@ test('detail pages, tabs, search and comparison stay usable at every viewport', 
     await expect(page.locator('main h1').first()).toBeAttached();
     await expect(page.getByRole('alert')).toHaveCount(0);
     await fits(page);
+    if (route === 'statistik') {
+      await page.locator('button[aria-pressed]').and(page.getByRole('button', { name: 'Feldtore', exact: true })).click();
+      await expect(page.getByRole('columnheader', { name: /Feldtore/ }).first()).toHaveAttribute('aria-sort', 'descending');
+      await expect(page.getByText(/Spielberichte für \d+ von \d+ beendeten Spielen ausgewertet/)).toBeVisible();
+      await fits(page);
+    }
     if (route.startsWith('spiel/')) {
       await page.getByRole('tab', { name: 'Ticker', exact: true }).click();
       await expect(page.locator('main')).not.toContainText('61. Minute');
@@ -80,9 +91,15 @@ test('detail pages, tabs, search and comparison stay usable at every viewport', 
       await fits(page);
     }
   }
+  const searchRequests: string[] = [];
+  page.on('request', (request) => searchRequests.push(new URL(request.url()).pathname));
   await page.goto('suche');
   await page.getByRole('searchbox').fill(meta.teams[0].name);
   await expect(page.locator('main a[href*="/team/"]').first()).toBeVisible();
+  await page.getByRole('searchbox').fill(stats.players[0].name);
+  await expect(page.locator('main a[href*="/spieler/"]').filter({ hasText: stats.players[0].name }).first()).toBeVisible();
+  expect(searchRequests.some((url) => url.endsWith('/player-search.json'))).toBe(true);
+  expect(searchRequests.some((url) => url.endsWith('/stats.json'))).toBe(false);
   expect(errors).toEqual([]);
 });
 
@@ -113,7 +130,9 @@ test('60:00, final whistle, navigation and report arrival preserve the completed
   const sourceMessages = JSON.parse(fs.readFileSync('test/fixtures/ticker-messages.json', 'utf8'));
   let ended = false;
   let reportArrived = false;
-  await page.route('**/api/s/*/games.json', (route) => route.fulfill({ json: [game] }));
+  const week = weekStart(berlinDay(game.ts));
+  await page.route('**/api/s/*/meta.json', (route) => route.fulfill({ json: { ...meta, weeks: [week] } }));
+  await page.route(`**/api/s/*/week/${week}.json`, (route) => route.fulfill({ json: [game] }));
   await page.route(`**/api/s/*/game/${game.id}.json`, (route) => route.fulfill({ json: { ...reported, game: reportArrived ? { ...game, status: 'finished', liveFlag: false, homePoints: 0, guestPoints: 2 } : game, report: reportArrived ? reported.report : null, summary: null } }));
   await page.route('https://spo.handball4all.de/**', (route) => {
     const url = new URL(route.request().url());
@@ -127,6 +146,7 @@ test('60:00, final whistle, navigation and report arrival preserve the completed
   ended = true;
   await page.clock.fastForward(21_000);
   await expect(page.getByText('ENDSTAND', { exact: true })).toBeVisible();
+  await expect(page.getByText('Endstand da · Spielbericht ausstehend', { exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Ticker', exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Live-Ticker', exact: true })).toHaveCount(0);
   await page.locator('nav:visible').getByRole('link', { name: 'Live', exact: true }).click();
@@ -163,7 +183,6 @@ test('a failed live score poll keeps the last received score', async ({ page }) 
   await page.clock.install({ time: now });
   const game = { ...reported.game, ts: now - 45 * 60_000, status: 'live', liveFlag: true, homeGoals: 11, guestGoals: 19, homePoints: null, guestPoints: null, tickerToken: null };
   let failed = false;
-  await page.route('**/api/s/*/games.json', (route) => route.fulfill({ json: [game] }));
   await page.route(`**/api/s/*/game/${game.id}.json`, (route) => route.fulfill({ json: { ...reported, game, report: null, summary: null } }));
   await page.route('https://spo.handball4all.de/**', (route) => failed ? route.fulfill({ status: 503, body: 'Provider unavailable' }) : route.fulfill({ json: [{ content: { score: [], actualGames: [], futureGames: { games: [{ gID: String(game.id), live: true, gToken: '', gHomeGoals: '24', gGuestGoals: '30', gHomeGoals_1: '11', gGuestGoals_1: '19', gHomePoints: '', gGuestPoints: '' }] } } }] }));
   await page.goto(`spiel/${game.id}`);
