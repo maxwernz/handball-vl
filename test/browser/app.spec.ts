@@ -78,8 +78,15 @@ test('detail pages, tabs, search and comparison stay usable at every viewport', 
     await expect(page.getByRole('alert')).toHaveCount(0);
     await fits(page);
     if (route === 'statistik') {
-      await page.locator('button[aria-pressed]').and(page.getByRole('button', { name: 'Feldtore', exact: true })).click();
-      await expect(page.getByRole('columnheader', { name: /Feldtore/ }).first()).toHaveAttribute('aria-sort', 'descending');
+      await expect(page.getByRole('button', { name: 'Torschützen', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator('button[aria-pressed]').and(page.getByRole('button', { name: 'Feldtore', exact: true }))).toHaveCount(0);
+      const scorers = page.locator('table').filter({ has: page.getByRole('columnheader', { name: 'Feldtore pro Spiel', exact: true }) });
+      for (const label of ['Tore', 'Feldtore', 'Tore pro Spiel', 'Feldtore pro Spiel']) {
+        const column = scorers.getByRole('columnheader', { name: label, exact: true });
+        await expect(column).toBeVisible();
+        if (label !== 'Tore') await column.getByRole('button').click();
+        await expect(column).toHaveAttribute('aria-sort', 'descending');
+      }
       await expect(page.getByText(/Spielberichte für \d+ von \d+ beendeten Spielen ausgewertet/)).toBeVisible();
       await fits(page);
     }

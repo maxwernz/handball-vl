@@ -14,7 +14,7 @@ test('long player names remain fully readable in each statistics view', async ({
   await page.route('**/api/s/*/stats*.json', async (route) => {
     const response = await route.fetch();
     const data = await response.json();
-    data.players = [{ ...player, name: longName, warnings: 1, twoMinutes: 3, disqualifications: 1, disqualificationsWithReport: 1 }];
+    data.players = [{ ...player, name: longName, games: 4, goals: 10, sevenGoals: 4, warnings: 1, twoMinutes: 3, disqualifications: 1, disqualificationsWithReport: 1 }];
     await route.fulfill({ response, json: data });
   });
   await page.goto('statistik');
@@ -33,6 +33,10 @@ test('long player names remain fully readable in each statistics view', async ({
     expect(dimensions.contentWidth).toBeLessThanOrEqual(dimensions.width + 1);
     expect(dimensions.contentHeight).toBeLessThanOrEqual(dimensions.height + 1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    if (view === 'Torschützen') {
+      const values = await link.locator('xpath=ancestor::tr').getByRole('cell').allTextContents();
+      expect(values.slice(-4)).toEqual(['10', '6', '2,5', '1,5']);
+    }
     if (view === 'Anteil & Serien') await page.screenshot({ path: info.outputPath('long-player-name.png'), fullPage: true });
     if (view === 'Strafen') await expect(page.getByRole('columnheader', { name: 'Blau' })).toBeVisible();
   }

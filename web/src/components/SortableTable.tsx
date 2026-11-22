@@ -10,6 +10,7 @@ export interface Column<T> {
   /** Hidden below this breakpoint to keep phone layouts readable. */
   hideBelow?: 'sm' | 'md' | 'lg';
   grow?: boolean;
+  wrapLabel?: boolean;
 }
 
 const HIDE = { sm: 'hidden sm:table-cell', md: 'hidden md:table-cell', lg: 'hidden lg:table-cell' };
@@ -60,7 +61,7 @@ export function SortableTable<T>({
                     className={`inline-flex items-center gap-0.5 hover:text-(--color-ink) ${sort.id === c.id ? 'text-(--color-ink)' : ''}`}
                     onClick={() => setSort((s) => ({ id: c.id, desc: s.id === c.id ? !s.desc : c.align !== 'left' }))}
                   >
-                    {c.label}
+                    <span className={c.wrapLabel ? 'max-w-20 whitespace-normal text-right sm:max-w-none sm:whitespace-nowrap' : undefined}>{c.label}</span>
                     {sort.id === c.id && <span aria-hidden>{sort.desc ? '↓' : '↑'}</span>}
                   </button>
                 </th>
